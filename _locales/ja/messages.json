@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "Biliweaver"
+  },
+  "extDescription": {
+    "message": "bilibili の動画セグメントを複数の CDN から並列ダウンロードして読み込みを高速化します。ライブ配信にも対応。"
+  }
+}

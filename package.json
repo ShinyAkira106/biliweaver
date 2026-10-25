@@ -1,0 +1,13 @@
+{
+  "name": "biliweaver",
+  "version": "1.3.1",
+  "private": true,
+  "description": "Chrome extension that speeds up bilibili video buffering with parallel multi-CDN range downloads.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node tests/engine-test.mjs && node scripts/build.mjs && node tests/extension-test.js dist/biliweaver"
+  },
+  "author": "ShinyAkira (https://github.com/ShinyAkira106)",
+  "homepage": "https://github.com/ShinyAkira106"
+}

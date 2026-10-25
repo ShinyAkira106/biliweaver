@@ -1,0 +1,256 @@
+"use strict";
+// The full settings page: a sidebar of sections, and in each section one row per setting
+// with its title and a short explanation on the left and the control on the right.
+const Settings = globalThis.BiliweaverSettings;
+const I18n = globalThis.BiliweaverI18n;
+const $ = (id) => document.getElementById(id);
+
+let current = Settings.normalize(Settings.DEFAULTS);
+let lang = I18n.resolve("auto", navigator.language);
+let statusTimer = null;
+
+// What each section holds. A row is a setting key with its control type; "custom" rows
+// draw themselves.
+const SECTIONS = [
+  { id: "basic", nav: "navBasic", rows: [
+    { key: "enabled", type: "switch", title: "enabled", desc: "enabledDesc" },
+    { key: "language", type: "select", title: "language", desc: "languageDesc", options: () => [["auto", I18n.t(lang, "langAuto")], ...I18n.LANGS.map((code) => [code, I18n.NAMES[code]])] },
+    { key: "playerButton", type: "switch", title: "playerButton", desc: "playerButtonDesc" },
+    { key: "badge", type: "switch", title: "badge", desc: "badgeDesc" }
+  ] },
+  { id: "video", nav: "navVideo", rows: [
+    { key: "threads", type: "select", number: true, title: "threads", desc: "threadsDesc", options: () => Settings.THREAD_CHOICES.map((value) => [value, String(value)]) },
+    { key: "chunkKB", type: "select", number: true, title: "chunk", desc: "chunkDesc", options: () => Settings.CHUNK_CHOICES_KB.map((value) => [value, value >= 1024 ? `${value / 1024} MB` : `${value} KB`]) },
+    { key: "prefetch", type: "switch", title: "prefetch", desc: "prefetchDesc" },
+    { key: "avoidPcdn", type: "switch", title: "avoidPcdnLong", desc: "avoidPcdnDesc" }
+  ] },
+  { id: "cdn", nav: "navCdn", rows: [
+    { key: "cdn", type: "select", title: "cdn", desc: "cdnDesc", options: () => [["auto", I18n.t(lang, "cdnAutoLong")], ["mainland", I18n.t(lang, "cdnMainlandLong")], ["overseas", I18n.t(lang, "cdnOverseasLong")], ["original", I18n.t(lang, "cdnOriginalLong")], ["custom", I18n.t(lang, "cdnCustom")]] },
+    { key: "customHosts", type: "hosts", title: "customHosts", desc: "customHostsDesc" },
+    { type: "mirrors", title: "mirrorsTitle", desc: "mirrorsDesc" }
+  ] },
+  { id: "live", nav: "navLive", rows: [
+    { key: "live", type: "switch", title: "live", desc: "liveDesc" },
+    { key: "preferHls", type: "switch", title: "preferHls", desc: "preferHlsDesc" }
+  ] },
+  { id: "status", nav: "navStatus", rows: [{ type: "status" }] },
+  { id: "data", nav: "navData", rows: [
+    { type: "export", title: "exportTitle", desc: "exportDesc" },
+    { type: "import", title: "importTitle", desc: "importDesc" }
+  ] },
+  { id: "about", nav: "navAbout", rows: [{ type: "about" }] }
+];
+
+function element(tag, props = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [name, value] of Object.entries(props)) {
+    if (name === "class") node.className = value;
+    else if (name === "text") node.textContent = value;
+    else if (name.startsWith("on")) node.addEventListener(name.slice(2), value);
+    else node.setAttribute(name, value);
+  }
+  node.append(...[].concat(children).filter(Boolean));
+  return node;
+}
+
+let savedTimer = null;
+function save(patch) {
+  current = Settings.normalize({ ...current, ...patch });
+  chrome.storage.sync.set(current, () => flash(chrome.runtime.lastError ? "!" : I18n.t(lang, "saved")));
+  render();
+}
+function flash(text) {
+  $("saved").textContent = text;
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => { $("saved").textContent = ""; }, 1600);
+}
+
+function settingRow(row, control, wide = false) {
+  return element("div", { class: wide ? "setting wide" : "setting" }, [
+    element("div", {}, [
+      element("div", { class: "title", text: I18n.t(lang, row.title) }),
+      row.desc ? element("div", { class: "desc", text: I18n.t(lang, row.desc) }) : null
+    ]),
+    element("div", { class: "control" }, control)
+  ]);
+}
+
+function buildRow(row) {
+  if (row.type === "switch") {
+    return settingRow(row, element("button", {
+      class: "switch", role: "switch", "aria-checked": String(current[row.key] === true), "aria-label": I18n.t(lang, row.title),
+      onclick: () => save({ [row.key]: !current[row.key] })
+    }));
+  }
+  if (row.type === "select") {
+    const select = element("select", { "aria-label": I18n.t(lang, row.title), onchange: (event) => save({ [row.key]: row.number ? Number(event.target.value) : event.target.value }) },
+      row.options().map(([value, label]) => element("option", { value: String(value), text: label })));
+    select.value = String(current[row.key]);
+    return settingRow(row, select);
+  }
+  if (row.type === "hosts") {
+    const area = element("textarea", { spellcheck: "false", placeholder: "upos-sz-mirrorcos.bilivideo.com", "aria-label": I18n.t(lang, row.title),
+      onchange: (event) => save({ customHosts: Settings.cleanHosts(event.target.value) }) });
+    area.value = current.customHosts.join("\n");
+    return settingRow(row, area, true);
+  }
+  if (row.type === "mirrors") {
+    const chips = (list) => element("div", { class: "chips" }, list.map((name) => element("span", { text: name })));
+    return settingRow(row, element("div", {}, [chips(Settings.MIRRORS.mainland), chips(Settings.MIRRORS.overseas)]), true);
+  }
+  if (row.type === "export") {
+    return settingRow(row, element("button", { class: "field-button", text: I18n.t(lang, "exportButton"), onclick: exportSettings }));
+  }
+  if (row.type === "import") {
+    const input = element("input", { type: "file", accept: "application/json,.json", hidden: "", onchange: importSettings });
+    return settingRow(row, [input, element("button", { class: "field-button", text: I18n.t(lang, "importButton"), onclick: () => input.click() })]);
+  }
+  if (row.type === "status") {
+    return element("div", { id: "status" });
+  }
+  if (row.type === "about") {
+    const manifest = chrome.runtime.getManifest();
+    const about = I18n.ABOUT;
+    const link = (href, text) => element("a", { class: "text-link", href, target: "_blank", rel: "noopener noreferrer", text });
+    const githubIcon = () => {
+      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      icon.setAttribute("viewBox", "0 0 16 16");
+      icon.setAttribute("width", "16");
+      icon.setAttribute("height", "16");
+      icon.setAttribute("aria-hidden", "true");
+      icon.innerHTML = '<path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>';
+      return icon;
+    };
+    return element("div", { class: "about" }, [
+      element("div", { class: "about-hero" }, [
+        element("img", { src: "../icons/icon-128.png", alt: "", width: "64", height: "64" }),
+        element("div", {}, [
+          element("div", { class: "about-name", text: "Biliweaver" }),
+          element("div", { class: "desc", text: `${I18n.t(lang, "aboutVersion")} ${manifest.version}` }),
+          element("div", { class: "desc", text: I18n.t(lang, "tagline") })
+        ])
+      ]),
+      settingRow({ title: "aboutAuthor", desc: "aboutAuthorDesc" }, link(about.github, about.author)),
+      settingRow({ title: "aboutGithub", desc: "aboutGithubDesc" }, element("a", { class: "field-button github", href: about.github, target: "_blank", rel: "noopener noreferrer" }, [githubIcon(), element("span", { text: about.github.replace("https://", "") })])),
+      settingRow({ title: "aboutLicense", desc: "aboutLicenseDesc" }, link(chrome.runtime.getURL("LICENSE.txt"), `${about.license} · ${I18n.t(lang, "viewLicense")}`)),
+      element("p", { text: I18n.t(lang, "aboutText") }),
+      element("p", { text: I18n.t(lang, "aboutCredit") }),
+      element("p", { class: "copyright", text: I18n.t(lang, "copyright") })
+    ]);
+  }
+  return null;
+}
+
+function activeSection() {
+  const id = location.hash.slice(1);
+  return SECTIONS.find((section) => section.id === id) || SECTIONS[0];
+}
+
+function render() {
+  lang = I18n.resolve(current.language, navigator.language);
+  I18n.apply(document, lang);
+  $("version").textContent = chrome.runtime.getManifest().version;
+  const section = activeSection();
+  document.title = `${I18n.t(lang, section.nav)} · Biliweaver`;
+
+  $("nav").replaceChildren(...SECTIONS.map((item) => element("a", {
+    href: `#${item.id}`, text: I18n.t(lang, item.nav), ...(item === section ? { "aria-current": "page" } : {})
+  })), element("div", { class: "nav-foot" }, [
+    element("a", { class: "nav-github", href: I18n.ABOUT.github, target: "_blank", rel: "noopener noreferrer", text: `GitHub · ${I18n.ABOUT.author}` }),
+    element("div", { text: I18n.t(lang, "copyright") }),
+    element("div", { text: I18n.t(lang, "licenseName") })
+  ]));
+
+  // Keep focus on the control that was just used when the section redraws.
+  const focused = document.activeElement?.closest?.(".setting");
+  const focusIndex = focused ? [...$("content").querySelectorAll(".setting")].indexOf(focused) : -1;
+  $("content").replaceChildren(element("h1", { text: I18n.t(lang, section.nav) }), ...section.rows.map(buildRow).filter(Boolean));
+  if (focusIndex >= 0) $("content").querySelectorAll(".setting")[focusIndex]?.querySelector("button, select, textarea")?.focus();
+
+  clearInterval(statusTimer);
+  if (section.id === "status") {
+    refreshStatus();
+    statusTimer = setInterval(refreshStatus, 1000);
+  }
+}
+
+function formatBytes(bytes) {
+  const units = ["B", "KB", "MB", "GB"];
+  let value = Number(bytes) || 0;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+  return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
+function refreshStatus() {
+  chrome.runtime.sendMessage({ type: "getAllStats" }, (answer) => {
+    const box = $("status");
+    if (!box || chrome.runtime.lastError) return;
+    const pages = answer?.pages || [];
+    if (!pages.length) {
+      box.replaceChildren(element("div", { class: "desc", text: I18n.t(lang, "statusDesc") }), element("div", { class: "status-empty", text: I18n.t(lang, "statusEmpty") }));
+      return;
+    }
+    box.replaceChildren(element("div", { class: "desc", text: I18n.t(lang, "statusDesc") }), element("div", { style: "height:12px" }), ...pages.map(({ title, stats }) => element("section", { class: "page-card" }, [
+      element("header", {}, [element("b", { text: title || "bilibili" }), element("span", { text: I18n.t(lang, stats.page === "live" ? "pageLive" : "pageVideo") })]),
+      element("div", { class: "figures" }, [
+        element("div", {}, [element("b", { text: `${formatBytes(stats.speedBps)}/s` }), element("small", { text: I18n.t(lang, "speed") })]),
+        element("div", {}, [element("b", { text: String(stats.activeThreads) }), element("small", { text: I18n.t(lang, "threadsNow") })]),
+        element("div", {}, [element("b", { text: formatBytes(stats.acceleratedBytes) }), element("small", { text: I18n.t(lang, "accelerated") })])
+      ]),
+      stats.hosts?.length ? element("table", {}, [
+        element("thead", {}, element("tr", {}, ["colHost", "colSpeed", "colData"].map((key) => element("th", { text: I18n.t(lang, key) })))),
+        element("tbody", {}, stats.hosts.map((host) => element("tr", {}, [
+          element("td", { class: host.cooling ? "cooling" : "", text: host.host, title: host.lastError || host.host }),
+          element("td", { text: host.cooling ? I18n.t(lang, "paused") : `${formatBytes(host.speedKBps * 1024)}/s` }),
+          element("td", { text: formatBytes(host.bytes) })
+        ])))
+      ]) : null
+    ])));
+  });
+}
+
+function exportSettings() {
+  const blob = new Blob([JSON.stringify({ biliweaver: chrome.runtime.getManifest().version, settings: current }, null, 2)], { type: "application/json" });
+  const link = element("a", { href: URL.createObjectURL(blob), download: "biliweaver-settings.json" });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+function importSettings(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  file.text().then((text) => {
+    const data = JSON.parse(text);
+    const incoming = data?.settings && typeof data.settings === "object" ? data.settings : data;
+    if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) throw new Error("not settings");
+    save(incoming);
+    flash(I18n.t(lang, "importOk"));
+  }).catch(() => flash(I18n.t(lang, "importFail")));
+  event.target.value = "";
+}
+
+$("reset").addEventListener("click", () => {
+  if (!confirm(I18n.t(lang, "resetConfirm"))) return;
+  current = Settings.normalize(Settings.DEFAULTS);
+  chrome.storage.sync.clear(() => chrome.storage.sync.set(current, () => flash(I18n.t(lang, "saved"))));
+  render();
+});
+
+window.addEventListener("hashchange", render);
+chrome.storage.onChanged.addListener((_changes, area) => {
+  if (area !== "sync") return;
+  chrome.storage.sync.get(null, (stored) => {
+    const next = Settings.normalize({ ...Settings.DEFAULTS, ...stored });
+    if (JSON.stringify(next) === JSON.stringify(current)) return;
+    current = next;
+    render();
+  });
+});
+chrome.storage.sync.get(null, (stored) => {
+  current = Settings.normalize({ ...Settings.DEFAULTS, ...stored });
+  render();
+});
+render();
