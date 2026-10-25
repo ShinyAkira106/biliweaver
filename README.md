@@ -18,7 +18,9 @@ A Chrome extension that splits the bilibili player's video segment requests into
 <p align="center">
   <img src="docs/images/player-panel.png" width="560" alt="播放器里的 Biliweaver 面板 / The Biliweaver panel inside the player">
 </p>
-<p align="center"><sub>播放器控制栏里的 Biliweaver 面板 · The Biliweaver panel in the player's control bar · プレーヤー内の Biliweaver パネル</sub></p>
+播放器控制栏里的 Biliweaver 面板。
+
+The Biliweaver panel in the player's control bar.
 
 ## 安装 / Install
 
@@ -39,27 +41,34 @@ The full settings page has section navigation on the left (General, Video, CDN r
 <p align="center">
   <img src="docs/images/player-bar.png" width="600" alt="控制栏里的 Biliweaver 按钮 / The Biliweaver button in the control bar">
 </p>
-<p align="center"><sub>按钮和原生按钮对齐，鼠标悬停时会播放“编织”动画 · The button lines up with the native ones and plays a weaving animation on hover</sub></p>
+
+控制栏里的 Biliweaver 按钮，尺寸和间距会自动对齐旁边的原生按钮。
+
+The Biliweaver button in the control bar, matched in size and spacing to the native buttons next to it.
 
 <p align="center">
-  <img src="docs/images/button-hover.gif" width="120" alt="按钮悬停动画 / Button hover animation">
+  <img src="docs/images/settings.png" width="720" alt="完整设置页 / Full settings page">
 </p>
 
-<table>
-  <tr>
-    <td width="62%"><img src="docs/images/settings.png" alt="完整设置页 / Full settings page"></td>
-    <td width="38%"><img src="docs/images/popup.png" alt="工具栏弹窗 / Toolbar popup"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>完整设置页：左侧分组导航，每项都有说明 · Full settings with section navigation</sub></td>
-    <td align="center"><sub>工具栏弹窗：常用设置和实时数据 · Toolbar popup with live stats</sub></td>
-  </tr>
-</table>
+完整设置页：左侧是分组导航，右侧每一项都有标题和一句说明。
+
+The full settings page: section navigation on the left, and a title with a one line explanation for every setting on the right.
+
+<p align="center">
+  <img src="docs/images/popup.png" width="300" alt="工具栏弹窗 / Toolbar popup">
+</p>
+
+工具栏弹窗：常用设置和当前页面的实时数据。
+
+The toolbar popup: the most used settings and live stats for the current page.
 
 <p align="center">
   <img src="docs/images/settings-about-ja.png" width="720" alt="日文界面的关于页 / About page in Japanese">
 </p>
-<p align="center"><sub>界面支持简体中文、English、日本語（图为日文的“关于”页） · Interface in Simplified Chinese, English and Japanese (About page shown in Japanese)</sub></p>
+
+界面支持简体中文、English 和日本語，图为日文的“关于”页。
+
+The interface comes in Simplified Chinese, English and Japanese; this is the About page in Japanese.
 
 ## 线路自检和诊断信息 / Route self test and diagnostics
 
@@ -69,17 +78,21 @@ The full settings page has section navigation on the left (General, Video, CDN r
 
 プレーヤーパネルと設定画面の「動作状況」にある「ルートの自己診断」は、現在の動画の候補ホストすべてに小さなデータを要求し、利用できるか、初回応答の遅延と速度を一覧表示します。結果はすぐにホストの優先度にも反映されます。「インポート/エクスポート」の「診断情報をエクスポート」では、バージョン、ブラウザ、設定、ホストの状態、最近のエラー、前回の診断結果をコピーまたはダウンロードできます。ページタイトルや動画アドレスは含みません。[Issues](https://github.com/ShinyAkira106/biliweaver/issues/new) に添付していただくと原因を特定しやすくなります。
 
-<table>
-  <tr>
-    <td width="45%"><img src="docs/images/player-selftest.png" alt="播放器面板里的线路自检 / Self test in the player panel"></td>
-    <td width="55%"><img src="docs/images/settings-status.png" alt="设置页运行状态里的线路自检 / Self test on the Status page"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>播放器面板里的线路自检 · Self test in the player panel</sub></td>
-    <td align="center"><sub>设置页“运行状态” · Status page in the settings</sub></td>
-  </tr>
-</table>
-<p align="center"><sub>截图中的线路和速度为示例数据 · Hosts and speeds in these screenshots are example data · スクリーンショットの数値は例です</sub></p>
+<p align="center">
+  <img src="docs/images/player-selftest.png" width="480" alt="播放器面板里的线路自检 / Self test in the player panel">
+</p>
+
+播放器面板里的线路自检。
+
+The route self test in the player panel.
+
+<p align="center">
+  <img src="docs/images/settings-status.png" width="720" alt="设置页运行状态里的线路自检 / Self test on the Status page">
+</p>
+
+设置页“运行状态”里的线路自检。截图中的线路和速度为示例数据。
+
+The route self test on the settings Status page. Hosts and speeds in these screenshots are example data.
 
 ## 工作原理 / How it works
 
