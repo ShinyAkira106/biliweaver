@@ -15,11 +15,16 @@
 
 A Chrome extension that splits the bilibili player's video segment requests into several parallel downloads from multiple CDN hosts, then hands the bytes back to the player in order, so buffering is faster. In live rooms it also orders the CDN hosts by speed and prefetches HLS segments. bilibili's own player, danmaku and quality switching keep working as usual.
 
+<p align="center">
+  <img src="docs/images/player-panel.png" width="560" alt="播放器里的 Biliweaver 面板 / The Biliweaver panel inside the player">
+</p>
+<p align="center"><sub>播放器控制栏里的 Biliweaver 面板 · The Biliweaver panel in the player's control bar · プレーヤー内の Biliweaver パネル</sub></p>
+
 ## 安装 / Install
 
-从 Releases 下载 `biliweaver-v版本号.zip` 并解压到一个固定的文件夹。打开 `chrome://extensions`（Edge 是 `edge://extensions`），打开右上角的“开发者模式”，点“加载已解压的扩展程序”，选择解压出来、里面有 `manifest.json` 的文件夹。需要 Chrome 116 或更新的版本。
+从 [Releases](https://github.com/ShinyAkira106/biliweaver/releases) 下载 `biliweaver-v版本号.zip` 并解压到一个固定的文件夹。打开 `chrome://extensions`（Edge 是 `edge://extensions`），打开右上角的“开发者模式”，点“加载已解压的扩展程序”，选择解压出来、里面有 `manifest.json` 的文件夹。需要 Chrome 116 或更新的版本。
 
-Download `biliweaver-v<version>.zip` from Releases and unzip it into a folder you will keep. Open `chrome://extensions` (or `edge://extensions`), switch on Developer mode, choose "Load unpacked", and pick the unzipped folder that contains `manifest.json`. Chrome 116 or newer is required.
+Download `biliweaver-v<version>.zip` from [Releases](https://github.com/ShinyAkira106/biliweaver/releases) and unzip it into a folder you will keep. Open `chrome://extensions` (or `edge://extensions`), switch on Developer mode, choose "Load unpacked", and pick the unzipped folder that contains `manifest.json`. Chrome 116 or newer is required.
 
 播放器右下角的控制栏里，设置按钮旁边会多一个 Biliweaver 按钮。点开是一个和播放器风格一致的小面板：总开关、实时速度、并发线程、CDN 线路、提前下载、避开 PCDN，以及正在使用的线路和速度。全屏时也能打开。点“全部设置”或工具栏上的 Biliweaver 图标，可以看到完整的设置。图标上的数字是当前标签页正在运行的下载线程数。不想要播放器里的按钮，可以在完整设置里关掉。按钮会自动对齐旁边原生按钮的尺寸、间距和颜色。
 
@@ -29,7 +34,58 @@ A Biliweaver button sits in the player's bottom right control bar, next to the s
 
 The full settings page has section navigation on the left (General, Video, CDN routes, Live, Status, Import and export, About), and every setting on the right comes with a title and a one line explanation. The interface is available in Simplified Chinese, English and Japanese; it follows the browser by default and can be switched under General.
 
+## 界面一览 / Screenshots / スクリーンショット
+
+<p align="center">
+  <img src="docs/images/player-bar.png" width="600" alt="控制栏里的 Biliweaver 按钮 / The Biliweaver button in the control bar">
+</p>
+<p align="center"><sub>按钮和原生按钮对齐，鼠标悬停时会播放“编织”动画 · The button lines up with the native ones and plays a weaving animation on hover</sub></p>
+
+<p align="center">
+  <img src="docs/images/button-hover.gif" width="120" alt="按钮悬停动画 / Button hover animation">
+</p>
+
+<table>
+  <tr>
+    <td width="62%"><img src="docs/images/settings.png" alt="完整设置页 / Full settings page"></td>
+    <td width="38%"><img src="docs/images/popup.png" alt="工具栏弹窗 / Toolbar popup"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>完整设置页：左侧分组导航，每项都有说明 · Full settings with section navigation</sub></td>
+    <td align="center"><sub>工具栏弹窗：常用设置和实时数据 · Toolbar popup with live stats</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/images/settings-about-ja.png" width="720" alt="日文界面的关于页 / About page in Japanese">
+</p>
+<p align="center"><sub>界面支持简体中文、English、日本語（图为日文的“关于”页） · Interface in Simplified Chinese, English and Japanese (About page shown in Japanese)</sub></p>
+
+## 线路自检和诊断信息 / Route self test and diagnostics
+
+播放器面板里的“线路自检”和设置页“运行状态”里的按钮，会向当前视频的每条候选线路请求一小段数据，列出哪些能用、首字节延迟和速度，结果也会马上用来调整线路优先级。设置页“导入/导出”里的“导出诊断信息”可以复制或下载一份报告，包含版本、浏览器、设置、线路状态、最近的错误和上次自检结果，不包含页面标题和视频地址。提交 [Issues](https://github.com/ShinyAkira106/biliweaver/issues/new) 时附上它，能更快找到问题。
+
+"Route self test", in the player panel and on the Status page of the settings, asks every candidate host for a small piece of the current video and lists which work, with first byte latency and speed; the results immediately feed the host ranking too. "Export diagnostics" under Import and export copies or downloads a report with the version, browser, settings, host status, recent errors and the last self test, leaving out page titles and video addresses. Attaching it to an [issue](https://github.com/ShinyAkira106/biliweaver/issues/new) makes problems much faster to track down.
+
+プレーヤーパネルと設定画面の「動作状況」にある「ルートの自己診断」は、現在の動画の候補ホストすべてに小さなデータを要求し、利用できるか、初回応答の遅延と速度を一覧表示します。結果はすぐにホストの優先度にも反映されます。「インポート/エクスポート」の「診断情報をエクスポート」では、バージョン、ブラウザ、設定、ホストの状態、最近のエラー、前回の診断結果をコピーまたはダウンロードできます。ページタイトルや動画アドレスは含みません。[Issues](https://github.com/ShinyAkira106/biliweaver/issues/new) に添付していただくと原因を特定しやすくなります。
+
+<table>
+  <tr>
+    <td width="45%"><img src="docs/images/player-selftest.png" alt="播放器面板里的线路自检 / Self test in the player panel"></td>
+    <td width="55%"><img src="docs/images/settings-status.png" alt="设置页运行状态里的线路自检 / Self test on the Status page"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>播放器面板里的线路自检 · Self test in the player panel</sub></td>
+    <td align="center"><sub>设置页“运行状态” · Status page in the settings</sub></td>
+  </tr>
+</table>
+<p align="center"><sub>截图中的线路和速度为示例数据 · Hosts and speeds in these screenshots are example data · スクリーンショットの数値は例です</sub></p>
+
 ## 工作原理 / How it works
+
+<p align="center">
+  <a href="https://github.com/ShinyAkira106/biliweaver/releases"><img src="docs/images/how-it-works.png" width="900" alt="How it works: install once, just press play, the buffer races ahead / 工作原理 / 仕組み"></a>
+</p>
 
 普通视频和番剧：播放器从 B 站的播放地址接口拿到每一路视频和音频的主地址和备用地址，再按字节范围（HTTP Range）一段一段地下载。Biliweaver 在页面里包装了 `fetch` 和 `XMLHttpRequest`。播放器要一段数据时，这一段会被切成几个更小的分片，同时发给当前最快的几个 CDN 主机：播放地址接口给出的主机，加上设置里选择的镜像主机。每个分片都会核对服务器返回的 `Content-Range` 和文件总大小，对不上的主机会被暂停使用。某个分片明显比预期慢时，会在另一台主机上再下载一份，谁先完成用谁。播放器的下一段请求通常紧接着上一段，所以 Biliweaver 会用空闲的线程提前下载后面的内容，下一次请求就直接从缓存返回。任何一步出错，请求都会原样交回给浏览器，最差也只是回到不加速的状态。
 
@@ -51,9 +107,9 @@ The mirror host list is in `shared/settings.js`. Hosts that do not answer are pa
 
 ## 开发 / Development
 
-项目没有任何依赖。`node scripts/build.mjs` 生成 `dist/biliweaver/`（可以直接加载）和 `dist/biliweaver-v版本号.zip`。`node tests/engine-test.mjs` 在 Node 里用模拟的 CDN 测试下载引擎；`node tests/extension-test.js dist/biliweaver` 用 Playwright 把扩展加载进 Chromium，用模拟的 B 站页面和 CDN 做端到端测试。
+项目没有任何依赖。`node scripts/build.mjs` 生成 `dist/biliweaver/`（可以直接加载）和 `dist/biliweaver-v版本号.zip`。`node tests/engine-test.mjs` 在 Node 里用模拟的 CDN 测试下载引擎；`node tests/extension-test.js dist/biliweaver` 用 Playwright 把扩展加载进 Chromium，用模拟的 B 站页面和 CDN 做端到端测试。 README 里的截图由 `node scripts/screenshots.js`、`node scripts/hover-gif.js` 和 `node scripts/how-it-works.js` 生成，背景是示意播放器，数值是示例。
 
-There are no dependencies. `node scripts/build.mjs` produces `dist/biliweaver/` (ready to load) and `dist/biliweaver-v<version>.zip`. `node tests/engine-test.mjs` tests the download engine in Node against a simulated CDN; `node tests/extension-test.js dist/biliweaver` loads the extension into Chromium with Playwright and runs end to end tests against simulated bilibili pages and CDN hosts.
+There are no dependencies. `node scripts/build.mjs` produces `dist/biliweaver/` (ready to load) and `dist/biliweaver-v<version>.zip`. `node tests/engine-test.mjs` tests the download engine in Node against a simulated CDN; `node tests/extension-test.js dist/biliweaver` loads the extension into Chromium with Playwright and runs end to end tests against simulated bilibili pages and CDN hosts. The README images come from `node scripts/screenshots.js`, `node scripts/hover-gif.js` and `node scripts/how-it-works.js`; the player is a drawn mock and the numbers are examples.
 
 ```text
 manifest.json        扩展清单 / extension manifest
@@ -67,9 +123,11 @@ page/transfer.js     并行分片下载和缓存 / parallel range downloader and
 page/intercept.js    包装 fetch 和 XHR / fetch and XHR wrapping
 page/vod.js          点播 / videos and bangumi
 page/live.js         直播 / live rooms
+page/selftest.js     线路自检 / route self test
 content/relay.js     页面和扩展之间的桥 / bridge between page and extension
 content/player-button.js  播放器控制栏里的按钮和面板 / control bar button and panel
 popup/               工具栏弹窗 / toolbar popup
+docs/images/          README 截图和示意图 / README screenshots and diagram
 ```
 
 页面里的代码运行在页面自己的环境（`world: MAIN`）中，不能使用 `chrome.*`；`content/relay.js` 运行在扩展的隔离环境里，负责读写设置和转发统计，两边通过带 JSON 文本的 DOM 事件通信。Chrome 在同一个框架里只注入同一个脚本文件一次，所以构建时会给每个环境打一个单独的包。
@@ -88,11 +146,11 @@ The idea of parallel multi-CDN downloading was inspired by [Bilibili-thread-ripp
 
 ## 作者 / Author / 作者
 
-Biliweaver 由 [ShinyAkira](https://github.com/ShinyAkira106) 开发和维护。欢迎在 GitHub 上提出问题和建议。
+Biliweaver 由 [ShinyAkira](https://github.com/ShinyAkira106) 开发和维护。欢迎在 [Issues](https://github.com/ShinyAkira106/biliweaver/issues/new) 里提出问题和建议。
 
-Biliweaver is made and maintained by [ShinyAkira](https://github.com/ShinyAkira106). Issues and suggestions are welcome on GitHub.
+Biliweaver is made and maintained by [ShinyAkira](https://github.com/ShinyAkira106). Issues and suggestions are welcome in [Issues](https://github.com/ShinyAkira106/biliweaver/issues/new).
 
-Biliweaver は [ShinyAkira](https://github.com/ShinyAkira106) が開発・メンテナンスしています。不具合の報告や提案は GitHub へどうぞ。
+Biliweaver は [ShinyAkira](https://github.com/ShinyAkira106) が開発・メンテナンスしています。不具合の報告や提案は [Issues](https://github.com/ShinyAkira106/biliweaver/issues/new) へどうぞ。
 
 ## 许可 / License / ライセンス
 

@@ -17,8 +17,8 @@ const version = manifest.version;
 const out = join(root, "dist", "biliweaver");
 
 export const BUNDLES = {
-  "bundles/page-video.js": ["shared/settings.js", "page/core.js", "page/transfer.js", "page/intercept.js", "page/vod.js"],
-  "bundles/page-live.js": ["shared/settings.js", "page/core.js", "page/transfer.js", "page/intercept.js", "page/live.js"],
+  "bundles/page-video.js": ["shared/settings.js", "page/core.js", "page/transfer.js", "page/intercept.js", "page/vod.js", "page/selftest.js"],
+  "bundles/page-live.js": ["shared/settings.js", "page/core.js", "page/transfer.js", "page/intercept.js", "page/live.js", "page/selftest.js"],
   "bundles/relay.js": ["shared/settings.js", "shared/i18n.js", "content/relay.js", "content/player-button.js"]
 };
 const COPY = ["manifest.json", "background.js", "shared/settings.js", "shared/i18n.js", "popup/popup.html", "popup/popup.css", "popup/popup.js", "options/options.html", "options/options.css", "options/options.js", "_locales/zh_CN/messages.json", "_locales/en/messages.json", "_locales/ja/messages.json", "icons/icon-16.png", "icons/icon-32.png", "icons/icon-48.png", "icons/icon-128.png", "icons/icon-512.png", "LICENSE", "README.md"];

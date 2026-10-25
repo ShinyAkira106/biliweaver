@@ -37,6 +37,39 @@
     });
   } catch (_error) {}
 
+  // The route self test runs in the page. The settings page asks for it through here, and
+  // every finished run (from there or from the player panel) is kept for diagnostics.
+  const waiting = new Map();
+  document.addEventListener("biliweaver:selftest-result", (event) => {
+    let message = null;
+    try { message = JSON.parse(event.detail); } catch (_error) { return; }
+    if (message?.result?.ok) {
+      try { chrome.storage.local.set({ lastSelfTest: { ...message.result, page: location.hostname === "live.bilibili.com" ? "live" : "video" } }); } catch (_error) {}
+    }
+    const reply = waiting.get(message?.id);
+    if (reply) {
+      waiting.delete(message.id);
+      reply(message.result);
+    }
+  });
+  try {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message?.type !== "selfTest" || window.top !== window) return false;
+      const id = `relay-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const timer = setTimeout(() => {
+        if (!waiting.has(id)) return;
+        waiting.delete(id);
+        sendResponse({ ok: false, reason: "noVideo" });
+      }, 25000);
+      waiting.set(id, (result) => {
+        clearTimeout(timer);
+        sendResponse(result);
+      });
+      document.dispatchEvent(new CustomEvent("biliweaver:selftest", { detail: JSON.stringify({ id }) }));
+      return true;
+    });
+  } catch (_error) {}
+
   let lastStats = null;
   document.addEventListener("biliweaver:stats", (event) => {
     if (!alive) return;

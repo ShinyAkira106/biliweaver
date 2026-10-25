@@ -16,9 +16,14 @@
 
   // fileKey → Set of absolute URLs that serve it.
   const alternates = new Map();
+  // What the route self test measures: the stream the player fetched last, or else the
+  // first one the play address answer listed.
+  let lastMediaUrl = "";
+  let firstListedUrl = "";
 
   function remember(urls) {
     const clean = urls.map((url) => util.absoluteUrl(url)).filter((url) => /^https?:/i.test(url));
+    if (!firstListedUrl) firstListedUrl = clean.find((url) => /\.(?:m4s|mp4|flv)(?:\?|$)/i.test(url)) || "";
     // A backup may name the same stream under another path, so the group is filed under
     // the key of every address in it.
     for (const key of new Set(clean.map(util.fileKey).filter(Boolean))) {
@@ -120,6 +125,7 @@
       await bw.ready;
       if (!bw.settings.enabled) throw intercept.PASS;
       scanPlayinfo();
+      lastMediaUrl = request.url;
       const range = rangeHeader ? util.parseRangeHeader(rangeHeader) : { start: 0, end: null };
       const result = await transfer.fetchRange({
         key: util.fileKey(request.url),
@@ -140,5 +146,21 @@
     };
   });
 
-  bw.vod = Object.freeze({ scan, candidatesFor, isMedia, alternates });
+  // The address mirror hosts are swapped into: a main store address if one is known.
+  function templateFor(url) {
+    const known = [url, ...(alternates.get(util.fileKey(url)) || [])];
+    const isUpos = (item) => { try { return /^upos-/i.test(new URL(item).hostname); } catch (_error) { return false; } };
+    const template = known.find((item) => isUpos(item) && !util.isPcdn(item)) || known.find((item) => !util.isPcdn(item)) || url;
+    let rewritable = false;
+    try { rewritable = new URL(template).pathname.startsWith("/upgcxcode/"); } catch (_error) {}
+    return { template, rewritable, known };
+  }
+
+  function testTarget() {
+    if (lastMediaUrl) return lastMediaUrl;
+    scanPlayinfo();
+    return firstListedUrl;
+  }
+
+  bw.vod = Object.freeze({ scan, candidatesFor, isMedia, alternates, templateFor, testTarget });
 })(globalThis);

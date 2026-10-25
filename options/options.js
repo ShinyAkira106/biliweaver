@@ -36,7 +36,8 @@ const SECTIONS = [
   { id: "status", nav: "navStatus", rows: [{ type: "status" }] },
   { id: "data", nav: "navData", rows: [
     { type: "export", title: "exportTitle", desc: "exportDesc" },
-    { type: "import", title: "importTitle", desc: "importDesc" }
+    { type: "import", title: "importTitle", desc: "importDesc" },
+    { type: "diagnostics", title: "diagTitle", desc: "diagDesc" }
   ] },
   { id: "about", nav: "navAbout", rows: [{ type: "about" }] }
 ];
@@ -98,6 +99,12 @@ function buildRow(row) {
     const chips = (list) => element("div", { class: "chips" }, list.map((name) => element("span", { text: name })));
     return settingRow(row, element("div", {}, [chips(Settings.MIRRORS.mainland), chips(Settings.MIRRORS.overseas)]), true);
   }
+  if (row.type === "diagnostics") {
+    return settingRow(row, [
+      element("button", { class: "field-button", text: I18n.t(lang, "copyDiag"), onclick: copyDiagnostics }),
+      element("button", { class: "field-button", text: I18n.t(lang, "downloadDiag"), onclick: downloadDiagnostics })
+    ]);
+  }
   if (row.type === "export") {
     return settingRow(row, element("button", { class: "field-button", text: I18n.t(lang, "exportButton"), onclick: exportSettings }));
   }
@@ -130,8 +137,10 @@ function buildRow(row) {
           element("div", { class: "desc", text: I18n.t(lang, "tagline") })
         ])
       ]),
-      settingRow({ title: "aboutAuthor", desc: "aboutAuthorDesc" }, link(about.github, about.author)),
-      settingRow({ title: "aboutGithub", desc: "aboutGithubDesc" }, element("a", { class: "field-button github", href: about.github, target: "_blank", rel: "noopener noreferrer" }, [githubIcon(), element("span", { text: about.github.replace("https://", "") })])),
+      settingRow({ title: "aboutAuthor", desc: "aboutAuthorDesc" }, link(about.profile, about.author)),
+      settingRow({ title: "aboutGithub", desc: "aboutGithubDesc" }, element("a", { class: "field-button github", href: about.github, target: "_blank", rel: "noopener noreferrer" }, [githubIcon(), element("span", { text: about.github.replace("https://github.com/", "") })])),
+      settingRow({ title: "aboutIssues", desc: "aboutIssuesDesc" }, link(about.issues, I18n.t(lang, "openIssues"))),
+      settingRow({ title: "aboutReleases", desc: "aboutReleasesDesc" }, link(about.releases, I18n.t(lang, "openReleases"))),
       settingRow({ title: "aboutLicense", desc: "aboutLicenseDesc" }, link(chrome.runtime.getURL("LICENSE.txt"), `${about.license} · ${I18n.t(lang, "viewLicense")}`)),
       element("p", { text: I18n.t(lang, "aboutText") }),
       element("p", { text: I18n.t(lang, "aboutCredit") }),
@@ -182,31 +191,155 @@ function formatBytes(bytes) {
   return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 }
 
+// Page cards are kept and updated in place, so the self test button and its results do
+// not flicker or lose clicks while the numbers refresh every second.
+const cards = new Map(); // tabId → { card, figures, hosts, test }
+const selfTests = new Map(); // tabId → { running, result }
+
+function statusTable(columns, rows) {
+  return element("table", {}, [
+    element("thead", {}, element("tr", {}, columns.map((key) => element("th", { text: I18n.t(lang, key) })))),
+    element("tbody", {}, rows)
+  ]);
+}
+
+function renderSelfTestInto(box, tabId) {
+  const state = selfTests.get(tabId);
+  if (!state) { box.replaceChildren(); return; }
+  if (state.running) { box.replaceChildren(element("div", { class: "desc busy", text: I18n.t(lang, "selfTestRunning") })); return; }
+  const result = state.result;
+  if (!result?.ok) {
+    const key = result?.reason === "live" ? "selfTestLive" : result?.reason === "noVideo" ? "selfTestNoVideo" : "selfTestError";
+    box.replaceChildren(element("div", { class: "desc", text: I18n.t(lang, key) }));
+    return;
+  }
+  const sourceKey = { bilibili: "sourceBilibili", mainland: "sourceMainland", overseas: "sourceOverseas", custom: "sourceCustom" };
+  box.replaceChildren(
+    element("div", { class: "st-title", text: `${I18n.t(lang, "selfTest")} · ${I18n.t(lang, "selfTestSummary").replace("{working}", result.working).replace("{tested}", result.tested)}` }),
+    statusTable(["colHost", "colSource", "colLatency", "colSpeed"], result.results.map((item) => element("tr", { class: item.ok ? "" : "bad" }, [
+      element("td", { text: item.host, title: item.error || item.host }),
+      element("td", { text: I18n.t(lang, sourceKey[item.source] || "sourceBilibili") }),
+      element("td", { text: item.ok ? `${item.firstByteMs} ms` : "" }),
+      element("td", { class: item.ok ? "" : "cooling", text: item.ok ? `${formatBytes(item.speedKBps * 1024)}/s` : I18n.t(lang, "unavailable") })
+    ])))
+  );
+}
+
+function runSelfTestOn(tabId) {
+  if (selfTests.get(tabId)?.running) return;
+  selfTests.set(tabId, { running: true, result: null });
+  refreshStatus();
+  chrome.tabs.sendMessage(tabId, { type: "selfTest" }, { frameId: 0 }, (result) => {
+    const failed = chrome.runtime.lastError || !result;
+    selfTests.set(tabId, { running: false, result: failed ? { ok: false, reason: "error" } : result });
+    refreshStatus();
+  });
+}
+
 function refreshStatus() {
   chrome.runtime.sendMessage({ type: "getAllStats" }, (answer) => {
     const box = $("status");
     if (!box || chrome.runtime.lastError) return;
     const pages = answer?.pages || [];
+    // A fresh status section (after switching sections) starts with no cards.
+    for (const [tabId, entry] of cards) if (!box.contains(entry.card) || !pages.some((page) => page.tabId === tabId)) { entry.card.remove(); cards.delete(tabId); }
+    let empty = box.querySelector(".status-empty");
+    if (!box.querySelector(".status-intro")) box.prepend(element("div", { class: "desc status-intro", text: I18n.t(lang, "statusDesc") }));
     if (!pages.length) {
-      box.replaceChildren(element("div", { class: "desc", text: I18n.t(lang, "statusDesc") }), element("div", { class: "status-empty", text: I18n.t(lang, "statusEmpty") }));
+      if (!empty) box.append(element("div", { class: "status-empty", text: I18n.t(lang, "statusEmpty") }));
       return;
     }
-    box.replaceChildren(element("div", { class: "desc", text: I18n.t(lang, "statusDesc") }), element("div", { style: "height:12px" }), ...pages.map(({ title, stats }) => element("section", { class: "page-card" }, [
-      element("header", {}, [element("b", { text: title || "bilibili" }), element("span", { text: I18n.t(lang, stats.page === "live" ? "pageLive" : "pageVideo") })]),
-      element("div", { class: "figures" }, [
+    empty?.remove();
+    for (const { tabId, title, stats } of pages) {
+      let entry = cards.get(tabId);
+      if (!entry) {
+        const figures = element("div", { class: "figures" });
+        const hosts = element("div");
+        const test = element("div", { class: "st-box" });
+        const button = element("button", { class: "field-button small", onclick: () => runSelfTestOn(tabId) });
+        const card = element("section", { class: "page-card" }, [
+          element("header", {}, [element("b", { class: "page-title" }), element("span", { class: "page-kind" }), button]),
+          figures, hosts, test
+        ]);
+        entry = { card, figures, hosts, test, button };
+        cards.set(tabId, entry);
+        box.append(card);
+      }
+      entry.card.querySelector(".page-title").textContent = title || "bilibili";
+      entry.card.querySelector(".page-kind").textContent = I18n.t(lang, stats.page === "live" ? "pageLive" : "pageVideo");
+      const state = selfTests.get(tabId);
+      entry.button.textContent = I18n.t(lang, state?.result ? "rerunSelfTest" : "selfTest");
+      entry.button.disabled = Boolean(state?.running);
+      entry.button.hidden = stats.page === "live";
+      entry.figures.replaceChildren(
         element("div", {}, [element("b", { text: `${formatBytes(stats.speedBps)}/s` }), element("small", { text: I18n.t(lang, "speed") })]),
         element("div", {}, [element("b", { text: String(stats.activeThreads) }), element("small", { text: I18n.t(lang, "threadsNow") })]),
         element("div", {}, [element("b", { text: formatBytes(stats.acceleratedBytes) }), element("small", { text: I18n.t(lang, "accelerated") })])
-      ]),
-      stats.hosts?.length ? element("table", {}, [
-        element("thead", {}, element("tr", {}, ["colHost", "colSpeed", "colData"].map((key) => element("th", { text: I18n.t(lang, key) })))),
-        element("tbody", {}, stats.hosts.map((host) => element("tr", {}, [
-          element("td", { class: host.cooling ? "cooling" : "", text: host.host, title: host.lastError || host.host }),
-          element("td", { text: host.cooling ? I18n.t(lang, "paused") : `${formatBytes(host.speedKBps * 1024)}/s` }),
-          element("td", { text: formatBytes(host.bytes) })
-        ])))
-      ]) : null
-    ])));
+      );
+      entry.hosts.replaceChildren(...(stats.hosts?.length ? [statusTable(["colHost", "colSpeed", "colData"], stats.hosts.map((host) => element("tr", {}, [
+        element("td", { class: host.cooling ? "cooling" : "", text: host.host, title: host.lastError || host.host }),
+        element("td", { text: host.cooling ? I18n.t(lang, "paused") : `${formatBytes(host.speedKBps * 1024)}/s` }),
+        element("td", { text: formatBytes(host.bytes) })
+      ])))] : []));
+      if (entry.test.dataset.version !== JSON.stringify(state || null) + lang) {
+        entry.test.dataset.version = JSON.stringify(state || null) + lang;
+        renderSelfTestInto(entry.test, tabId);
+      }
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------------
+// Diagnostics: everything useful for a bug report, nothing that says what was watched.
+// ---------------------------------------------------------------------------------
+function collectDiagnostics() {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: "getAllStats" }, (answer) => {
+      chrome.storage.local.get("lastSelfTest", (stored) => {
+        const manifest = chrome.runtime.getManifest();
+        const pages = (answer?.pages || []).map(({ stats }) => ({
+          page: stats.page,
+          engine: stats.version,
+          frames: stats.frames,
+          speedBps: stats.speedBps,
+          activeThreads: stats.activeThreads,
+          acceleratedRequests: stats.acceleratedRequests,
+          acceleratedBytes: stats.acceleratedBytes,
+          cacheHits: stats.cacheHits,
+          fallbacks: stats.fallbacks,
+          liveSegments: stats.liveSegments,
+          hosts: stats.hosts,
+          recentErrors: (stats.recentErrors || []).map((error) => ({ ...error, at: new Date(error.at).toISOString() }))
+        }));
+        const lastSelfTest = stored?.lastSelfTest ? { ...stored.lastSelfTest, at: new Date(stored.lastSelfTest.at).toISOString() } : null;
+        resolve({
+          report: "Biliweaver diagnostics",
+          generatedAt: new Date().toISOString(),
+          extension: { version: manifest.version },
+          browser: { userAgent: navigator.userAgent, language: navigator.language, deviceMemoryGB: navigator.deviceMemory || null },
+          settings: current,
+          pages,
+          lastSelfTest
+        });
+      });
+    });
+  });
+}
+
+function copyDiagnostics() {
+  collectDiagnostics().then((data) => navigator.clipboard.writeText(JSON.stringify(data, null, 2)))
+    .then(() => flash(I18n.t(lang, "copied")), () => flash("!"));
+}
+
+function downloadDiagnostics() {
+  collectDiagnostics().then((data) => {
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const link = element("a", { href: URL.createObjectURL(blob), download: `biliweaver-diagnostics-${stamp}.json` });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   });
 }
 

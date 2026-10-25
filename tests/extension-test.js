@@ -255,7 +255,7 @@ window.__NEPTUNE_IS_MY_WAIFU__ = { roomInitRes: { data: { playurl_info: { playur
     const panel = page.locator("#right .biliweaver-ctrl .panel");
     await panel.waitFor({ state: "visible", timeout: 2000 });
     await page.screenshot({ path: path.join(process.env.SHOT_DIR || __dirname, "panel-main.png"), clip: { x: 600, y: 60, width: 400, height: 540 } });
-    await panel.locator(".nav-row").click();
+    await panel.locator(".nav-row[data-open='lang-view']").click();
     await panel.locator(".lang-view").waitFor({ state: "visible" });
     assert.equal(await panel.locator(".main-view").isVisible(), false);
     assert.equal(await panel.locator("[data-language=auto]").getAttribute("aria-checked"), "true");
@@ -267,7 +267,7 @@ window.__NEPTUNE_IS_MY_WAIFU__ = { roomInitRes: { data: { playurl_info: { playur
     const stored = await worker.evaluate(() => chrome.storage.sync.get("language"));
     assert.equal(stored.language, "en");
     // Escape leaves the submenu first, then closes the panel.
-    await panel.locator(".nav-row").click();
+    await panel.locator(".nav-row[data-open='lang-view']").click();
     await page.keyboard.press("Escape");
     await panel.locator(".main-view").waitFor({ state: "visible" });
     await page.keyboard.press("Escape");
@@ -316,7 +316,10 @@ window.__NEPTUNE_IS_MY_WAIFU__ = { roomInitRes: { data: { playurl_info: { playur
       await about.goto(`chrome-extension://${extensionId}/options/options.html#about`);
       await about.waitForSelector(".about .copyright");
       assert.equal(await about.locator(".about .copyright").textContent(), text);
-      assert.equal(await about.locator(".about a[href='https://github.com/ShinyAkira106']").count(), 2);
+      assert.equal(await about.locator(".about a[href='https://github.com/ShinyAkira106']").count(), 1);
+      assert.equal(await about.locator(".about a[href='https://github.com/ShinyAkira106/biliweaver']").count(), 1);
+      assert.equal(await about.locator(".about a[href='https://github.com/ShinyAkira106/biliweaver/issues/new']").count(), 1);
+      assert.equal(await about.locator(".about a[href='https://github.com/ShinyAkira106/biliweaver/releases']").count(), 1);
       await about.screenshot({ path: path.join(process.env.SHOT_DIR || __dirname, `about-${language}.png`) });
     }
     const license = await about.evaluate(async () => (await fetch(chrome.runtime.getURL("LICENSE.txt"))).text());
@@ -371,6 +374,46 @@ window.__NEPTUNE_IS_MY_WAIFU__ = { roomInitRes: { data: { playurl_info: { playur
     await page.mouse.move(200, 200);
     await page.evaluate(() => clearInterval(window.__fakeStats));
     await page.mouse.click(200, 200);
+  });
+
+  await check("the route self test runs from the player panel", async () => {
+    await page.click("#right .biliweaver-ctrl");
+    const panel = page.locator("#right .biliweaver-ctrl .panel");
+    await panel.waitFor({ state: "visible", timeout: 2000 });
+    await panel.locator(".nav-row[data-open='selftest-view']").click();
+    await panel.locator(".selftest-view .st-row").first().waitFor({ timeout: 15000 });
+    const summary = await panel.locator(".selftest-view [data-st=summary]").textContent();
+    const rows = await panel.locator(".selftest-view .st-row").count();
+    const working = await panel.locator(".selftest-view .st-row:not(.bad)").count();
+    assert.ok(rows >= 6 && working >= 2, `${summary} rows=${rows} working=${working}`);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(process.env.SHOT_DIR || __dirname, "panel-selftest.png"), clip: { x: 640, y: 40, width: 340, height: 560 } });
+    await page.keyboard.press("Escape");
+    await page.mouse.click(200, 200);
+  });
+
+  await check("the Status page runs a self test and diagnostics export leaves out titles and addresses", async () => {
+    const options = await context.newPage();
+    await options.setViewportSize({ width: 1400, height: 1000 });
+    await options.goto(`chrome-extension://${extensionId}/options/options.html#status`);
+    const button = options.locator(".page-card header button").first();
+    await button.waitFor({ timeout: 5000 });
+    await button.click();
+    await options.locator(".page-card .st-box table tbody tr").first().waitFor({ timeout: 15000 });
+    await options.waitForTimeout(1500);
+    assert.ok(await options.locator(".page-card .st-box table tbody tr").count() >= 6, "the self test table stays after refreshes");
+    await options.screenshot({ path: path.join(process.env.SHOT_DIR || __dirname, "status-selftest.png"), fullPage: true });
+    await options.goto(`chrome-extension://${extensionId}/options/options.html#data`);
+    const download = options.waitForEvent("download");
+    await options.locator(".setting").filter({ hasText: /诊断|diagnostics|診断/i }).locator("button").nth(1).click();
+    const file = await (await download).path();
+    const text = require("node:fs").readFileSync(file, "utf8");
+    const report = JSON.parse(text);
+    assert.equal(report.extension.version, require(path.join(extensionPath, "manifest.json")).version);
+    assert.ok(report.lastSelfTest && report.lastSelfTest.results.length >= 6);
+    assert.ok(Array.isArray(report.pages) && report.pages.length >= 1);
+    assert.ok(!/upsig|deadline=|<h1>|BV1test/.test(text), "report must not contain signed addresses or page details");
+    await options.close();
   });
 
   await check("the service worker sees the tab's stats", async () => {

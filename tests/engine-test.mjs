@@ -99,7 +99,7 @@ const context = vm.createContext({
 });
 context.globalThis = context;
 context.window = context;
-for (const file of ["shared/settings.js", "page/core.js", "page/transfer.js", "page/intercept.js", "page/vod.js", "page/live.js"]) {
+for (const file of ["shared/settings.js", "page/core.js", "page/transfer.js", "page/intercept.js", "page/vod.js", "page/live.js", "page/selftest.js"]) {
   vm.runInContext(readFileSync(join(root, file), "utf8"), context, { filename: file });
 }
 const bw = context.__biliweaver;
@@ -276,6 +276,28 @@ test("HLS playlists are parsed relative to their own address", async () => {
   const playlist = bw.live.parsePlaylist("#EXTM3U\n#EXT-X-MAP:URI=\"h1.m4s\"\n#EXTINF:1,\n100.m4s\n#EXTINF:1,\n101.m4s\n", "https://x.bilivideo.com/live-bvc/1/live_1/index.m3u8?sig=1");
   assert.equal(playlist.map, "https://x.bilivideo.com/live-bvc/1/live_1/h1.m4s");
   assert.equal(JSON.stringify(playlist.segments), JSON.stringify(["https://x.bilivideo.com/live-bvc/1/live_1/100.m4s", "https://x.bilivideo.com/live-bvc/1/live_1/101.m4s"]));
+});
+
+test("the route self test checks every candidate host and flags a wrong file size", async () => {
+  await fresh();
+  resetCdn({ ...healthy(), "upos-sz-mirrorhw.bilivideo.com": { size: FILE_SIZE + 10 }, "upos-sz-mirror08c.bilivideo.com": { status: 403 } });
+  setSettings({});
+  bw.vod.scan(playurlAnswer);
+  const result = await bw.selfTest();
+  assert.equal(result.ok, true);
+  const byHost = Object.fromEntries(result.results.map((item) => [item.host, item]));
+  assert.equal(byHost["upos-sz-mirrorcos.bilivideo.com"].ok, true);
+  assert.equal(byHost["upos-sz-mirrorcos.bilivideo.com"].source, "bilibili");
+  assert.equal(byHost["upos-sz-mirrorali.bilivideo.com"].ok, true);
+  assert.equal(byHost["upos-sz-mirror08c.bilivideo.com"].error, "HTTP 403");
+  assert.equal(byHost["upos-sz-mirrorhw.bilivideo.com"].error, "file size differs");
+  assert.ok(byHost["upos-sz-mirroraliov.bilivideo.com"], "overseas mirrors are tested too");
+  assert.equal(result.working, result.results.filter((item) => item.ok).length);
+  assert.ok(result.results[0].ok, "working hosts come first");
+  assert.ok(JSON.stringify(result).indexOf("upsig") < 0, "no signed addresses in the result");
+  // The hosts that failed are cooled down for real requests too.
+  assert.ok(bw.hosts.snapshot().find((item) => item.host === "upos-sz-mirror08c.bilivideo.com")?.cooling);
+  assert.ok(bw.recentErrors().some((error) => error.host === "upos-sz-mirror08c.bilivideo.com"));
 });
 
 let failed = 0;

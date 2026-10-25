@@ -309,12 +309,22 @@
       <div class="row"><span data-i18n="prefetch"></span><button class="toggle" data-key="prefetch" role="switch" data-i18n-aria="prefetch"><i></i></button></div>
       <div class="row"><span data-i18n="avoidPcdn"></span><button class="toggle" data-key="avoidPcdn" role="switch" data-i18n-aria="avoidPcdn"><i></i></button></div>
       <div class="row live-only"><span data-i18n="preferHls"></span><button class="toggle" data-key="preferHls" role="switch" data-i18n-aria="preferHls"><i></i></button></div>
+      <button class="row nav-row" data-open="selftest-view"><span data-i18n="selfTest"></span><span class="value"><span data-current="selftest"></span><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
       <button class="row nav-row" data-open="lang-view" aria-haspopup="menu"><span data-i18n="language"></span><span class="value"><span data-current="language"></span><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
       <div class="hosts" data-stat="hosts"></div>
       <div class="foot">
         <span class="note marquee"><span data-i18n="noteReload"></span></span>
         <button class="more" data-i18n="allSettings"></button>
       </div>
+      </div>
+      <div class="view selftest-view" hidden>
+        <div class="sub-head"><button class="back" data-i18n-aria="selfTest"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span data-i18n="selfTest"></span></div>
+        <div class="st-summary" data-st="summary"></div>
+        <div class="st-list" data-st="list"></div>
+        <div class="foot">
+          <span class="note marquee"><span data-i18n="selfTestHint"></span></span>
+          <button class="more st-run" data-i18n="runSelfTest"></button>
+        </div>
       </div>
       <div class="view lang-view" hidden>
         <div class="sub-head"><button class="back" data-i18n-aria="language"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span data-i18n="language"></span></div>
@@ -329,6 +339,7 @@
 
   function translatePanel() {
     I18n.apply(panelRoot, lang);
+    renderSelfTest();
   }
 
   const PANEL_CSS = `
@@ -379,7 +390,16 @@
     .more:hover{text-decoration:underline}
     .off .stats,.off .group,.off .row:not(.head):not(.nav-row){opacity:.45}
     .view{animation:slide .16s ease-out}
-    .lang-view{animation-name:slide-in}
+    .lang-view,.selftest-view{animation-name:slide-in}
+    .st-summary{font-size:12px;color:hsla(0,0%,100%,.7);min-height:18px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .st-summary.busy::after{content:"";display:inline-block;width:10px;height:10px;margin-left:8px;vertical-align:-1px;border:2px solid hsla(0,0%,100%,.25);border-top-color:#00aeec;border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .st-list{display:flex;flex-direction:column;max-height:228px;overflow-y:auto;font-size:11px;font-variant-numeric:tabular-nums;scrollbar-width:thin}
+    .st-row{display:grid;grid-template-columns:minmax(0,1fr) 54px 68px;align-items:center;gap:8px;height:22px;color:hsla(0,0%,100%,.75)}
+    .st-row .num{text-align:right;white-space:nowrap}
+    .st-row.bad{color:hsla(0,0%,100%,.4)}
+    .st-row.bad .num:last-child{color:#f69}
+    .st-run[disabled]{opacity:.5;cursor:default}
     @keyframes slide{from{opacity:.4;transform:translateX(-8px)}to{opacity:1;transform:none}}
     @keyframes slide-in{from{opacity:.4;transform:translateX(8px)}to{opacity:1;transform:none}}
     .nav-row{width:calc(100% + 12px);margin:0 -6px;padding:0 6px;border-radius:4px;text-align:left}
@@ -432,8 +452,12 @@
       try { chrome.runtime.sendMessage({ type: "openSettings" })?.catch?.(() => {}); } catch (_error) {}
       closePanel();
     });
-    root.querySelector(".nav-row").addEventListener("click", () => showView("lang-view"));
-    root.querySelector(".back").addEventListener("click", () => showView("main-view"));
+    root.querySelectorAll(".nav-row[data-open]").forEach((row) => row.addEventListener("click", () => {
+      showView(row.dataset.open);
+      if (row.dataset.open === "selftest-view" && !selfTestState.result && !selfTestState.running) runSelfTest();
+    }));
+    root.querySelectorAll(".back").forEach((back) => back.addEventListener("click", () => showView("main-view")));
+    root.querySelector(".st-run").addEventListener("click", () => runSelfTest());
     root.querySelectorAll("[data-language]").forEach((button) => {
       button.addEventListener("click", () => {
         save({ language: button.dataset.language });
@@ -446,8 +470,90 @@
   function showView(name) {
     if (!panelRoot) return;
     panelRoot.querySelectorAll(".view").forEach((view) => { view.hidden = !view.classList.contains(name); });
-    const target = name === "lang-view" ? panelRoot.querySelector("[data-language][aria-checked=true]") : panelRoot.querySelector(".nav-row");
+    const target = name === "lang-view" ? panelRoot.querySelector("[data-language][aria-checked=true]")
+      : name === "selftest-view" ? panelRoot.querySelector(".selftest-view .back")
+        : panelRoot.querySelector(".nav-row");
     target?.focus({ preventScroll: true });
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Route self test, run in the page engine.
+  // ---------------------------------------------------------------------------------
+  const selfTestState = { running: false, result: null, id: "" };
+  document.addEventListener("biliweaver:selftest-result", (event) => {
+    let message = null;
+    try { message = JSON.parse(event.detail); } catch (_error) { return; }
+    if (!message || message.id !== selfTestState.id) return;
+    selfTestState.running = false;
+    selfTestState.result = message.result;
+    renderSelfTest();
+  });
+
+  function runSelfTest() {
+    if (selfTestState.running) return;
+    selfTestState.running = true;
+    selfTestState.id = `panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    renderSelfTest();
+    document.dispatchEvent(new CustomEvent("biliweaver:selftest", { detail: JSON.stringify({ id: selfTestState.id }) }));
+    // A page without the engine never answers.
+    const id = selfTestState.id;
+    setTimeout(() => {
+      if (!selfTestState.running || selfTestState.id !== id) return;
+      selfTestState.running = false;
+      selfTestState.result = { ok: false, reason: "noVideo" };
+      renderSelfTest();
+    }, 25000);
+  }
+
+  function renderSelfTest() {
+    if (!panelRoot) return;
+    const summary = panelRoot.querySelector("[data-st=summary]");
+    const list = panelRoot.querySelector("[data-st=list]");
+    const button = panelRoot.querySelector(".st-run");
+    const current = panelRoot.querySelector("[data-current=selftest]");
+    const result = selfTestState.result;
+    button.disabled = selfTestState.running;
+    button.textContent = t(result ? "rerunSelfTest" : "runSelfTest");
+    summary.classList.toggle("busy", selfTestState.running);
+    if (selfTestState.running) {
+      summary.textContent = t("selfTestRunning");
+      current.textContent = t("selfTestRunning");
+      return;
+    }
+    if (!result) {
+      summary.textContent = "";
+      current.textContent = "";
+      list.replaceChildren();
+      return;
+    }
+    if (!result.ok) {
+      summary.textContent = t(result.reason === "live" ? "selfTestLive" : result.reason === "noVideo" ? "selfTestNoVideo" : "selfTestError");
+      current.textContent = "";
+      list.replaceChildren();
+      return;
+    }
+    const line = t("selfTestSummary").replace("{working}", String(result.working)).replace("{tested}", String(result.tested));
+    summary.textContent = line;
+    current.textContent = `${result.working} / ${result.tested}`;
+    const sourceKey = { bilibili: "sourceBilibili", mainland: "sourceMainland", overseas: "sourceOverseas", custom: "sourceCustom" };
+    list.replaceChildren(...result.results.map((item) => {
+      const row = document.createElement("div");
+      row.className = item.ok ? "st-row" : "st-row bad";
+      const name = document.createElement("span");
+      name.className = "marquee";
+      const text = document.createElement("span");
+      text.textContent = item.host.replace(/\.bilivideo\.(?:com|cn)$/, "");
+      name.append(text);
+      name.title = `${item.host}\n${t(sourceKey[item.source] || "sourceBilibili")}${item.error ? `\n${item.error}` : ""}`;
+      const latency = document.createElement("span");
+      latency.className = "num";
+      latency.textContent = item.ok ? `${item.firstByteMs} ms` : "";
+      const speed = document.createElement("span");
+      speed.className = "num";
+      speed.textContent = item.ok ? `${formatBytes(item.speedKBps * 1024)}/s` : t("unavailable");
+      row.append(name, latency, speed);
+      return row;
+    }));
   }
 
   function formatBytes(value) {
@@ -545,7 +651,7 @@
     if (!open || event.key !== "Escape") return;
     event.preventDefault();
     event.stopPropagation();
-    if (panelRoot && !panelRoot.querySelector(".lang-view").hidden) showView("main-view");
+    if (panelRoot && panelRoot.querySelector(".main-view").hidden) showView("main-view");
     else {
       const hadFocus = event.composedPath().includes(host);
       closePanel();

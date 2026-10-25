@@ -30,7 +30,7 @@ function aggregate(tabId) {
   const frames = tabs.get(tabId);
   if (!frames) return null;
   const now = Date.now();
-  const out = { activeThreads: 0, queued: 0, speedBps: 0, acceleratedRequests: 0, acceleratedBytes: 0, cacheHits: 0, fallbacks: 0, liveSegments: 0, hosts: [], page: "video", version: "", frames: 0 };
+  const out = { activeThreads: 0, queued: 0, speedBps: 0, acceleratedRequests: 0, acceleratedBytes: 0, cacheHits: 0, fallbacks: 0, liveSegments: 0, hosts: [], recentErrors: [], page: "video", version: "", frames: 0 };
   const hostMap = new Map();
   for (const [frameId, item] of frames) {
     // A frame that has gone quiet for long is gone (navigated or closed).
@@ -40,6 +40,7 @@ function aggregate(tabId) {
     out.version = stats.version || out.version;
     if (stats.page === "live") out.page = "live";
     for (const key of ["activeThreads", "queued", "speedBps", "acceleratedRequests", "acceleratedBytes", "cacheHits", "fallbacks", "liveSegments"]) out[key] += Number(stats[key]) || 0;
+    for (const error of Array.isArray(stats.recentErrors) ? stats.recentErrors : []) out.recentErrors.push(error);
     for (const host of Array.isArray(stats.hosts) ? stats.hosts : []) {
       const seen = hostMap.get(host.host);
       if (!seen) hostMap.set(host.host, { ...host });
@@ -53,6 +54,7 @@ function aggregate(tabId) {
       }
     }
   }
+  out.recentErrors = out.recentErrors.sort((a, b) => a.at - b.at).slice(-15);
   out.hosts = [...hostMap.values()].sort((a, b) => b.bytes - a.bytes).slice(0, 16);
   return out;
 }

@@ -136,6 +136,15 @@
 
   util.abortError = () => new DOMException("The operation was aborted.", "AbortError");
 
+  // The last few things that went wrong, for the diagnostics report. Only host names and
+  // short reasons are kept, never full addresses (they carry signatures).
+  const errorLog = [];
+  bw.recordError = (kind, host, message) => {
+    errorLog.push({ at: Date.now(), kind: String(kind), host: String(host || ""), message: String(message || "").slice(0, 160) });
+    if (errorLog.length > 30) errorLog.shift();
+  };
+  bw.recentErrors = () => errorLog.slice(-10);
+
   // ---------------------------------------------------------------------------------
   // Host pool: what Biliweaver has learned about each CDN host on this page.
   // ---------------------------------------------------------------------------------
@@ -168,6 +177,7 @@
       entry.failures += 1;
       entry.errors += 1;
       entry.lastError = String(reason || "error").slice(0, 120);
+      bw.recordError("host", host, entry.lastError);
       const wait = hard ? 10 * 60 * 1000 : Math.min(5 * 60 * 1000, 3000 * 2 ** Math.min(entry.failures - 1, 7));
       entry.cooldownUntil = Date.now() + wait;
       entry.speed *= 0.5;
@@ -303,7 +313,8 @@
       queued: bw.slots.queued,
       speedBps: bw.stats.speedBps(),
       ...counters,
-      hosts: bw.hosts.snapshot()
+      hosts: bw.hosts.snapshot(),
+      recentErrors: bw.recentErrors()
     };
     const text = JSON.stringify(snapshot);
     // Unchanged stats still go out every few seconds, so the service worker knows the

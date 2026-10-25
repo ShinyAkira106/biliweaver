@@ -95,6 +95,34 @@
     aboutGithubDesc: ["源代码、更新和问题反馈都在 GitHub 上。", "Source code, updates and issue reports are on GitHub.", "ソースコード、更新情報、不具合の報告は GitHub で。"],
     aboutLicenseDesc: ["基于 MIT 许可证开源，可以自由使用、修改和分发，需保留版权声明。", "Open source under the MIT License: free to use, modify and share, as long as the copyright notice is kept.", "MIT ライセンスのオープンソースです。著作権表示を残せば、自由に使用・改変・再配布できます。"],
     licenseName: ["MIT 许可证", "MIT License", "MIT ライセンス"],
+    aboutIssues: ["问题反馈", "Report a problem", "不具合の報告"],
+    aboutIssuesDesc: ["遇到问题或有建议，可以在 GitHub Issues 里提出。", "Found a problem or have an idea? Open an issue on GitHub.", "不具合や提案は GitHub の Issues へどうぞ。"],
+    openIssues: ["打开 Issues", "Open Issues", "Issues を開く"],
+    aboutReleases: ["下载新版本", "Get new versions", "新しいバージョン"],
+    aboutReleasesDesc: ["扩展不会自动更新，新版本发布在 GitHub Releases。", "The extension doesn't update itself; new versions are published on GitHub Releases.", "拡張機能は自動更新されません。新しいバージョンは GitHub Releases で公開しています。"],
+    openReleases: ["打开 Releases", "Open Releases", "Releases を開く"],
+    selfTest: ["线路自检", "Route self test", "ルートの自己診断"],
+    selfTestDesc: ["向当前视频的每条候选线路请求一小段数据，看哪些能用、延迟和速度各是多少。", "Asks every candidate host for a small piece of the current video and shows which work, with latency and speed.", "現在の動画の候補ホストすべてに小さなデータを要求し、使えるかどうかと遅延・速度を表示します。"],
+    runSelfTest: ["开始自检", "Run test", "診断を開始"],
+    rerunSelfTest: ["重新测试", "Test again", "もう一度"],
+    selfTestRunning: ["正在测试…", "Testing…", "診断中…"],
+    selfTestNoVideo: ["这个页面还没有可测试的视频，先播放一下再试。", "No video to test on this page yet. Play it for a moment and try again.", "このページにはまだ診断できる動画がありません。少し再生してからもう一度お試しください。"],
+    selfTestLive: ["直播间不支持线路自检，请在视频页面使用。", "The self test works on video pages, not live rooms.", "自己診断は動画ページで使えます。ライブ配信には対応していません。"],
+    selfTestError: ["自检没有完成。", "The test didn't finish.", "診断を完了できませんでした。"],
+    selfTestSummary: ["{working} / {tested} 条线路可用", "{working} of {tested} hosts work", "{tested} 件中 {working} 件のホストが利用可能"],
+    selfTestHint: ["测试会让 Biliweaver 立刻优先使用更快的线路。", "Running the test also makes Biliweaver prefer the faster hosts right away.", "診断結果はすぐに反映され、速いホストが優先されます。"],
+    colSource: ["来源", "Source", "種類"],
+    colLatency: ["首字节", "First byte", "初回応答"],
+    unavailable: ["不可用", "Unavailable", "利用不可"],
+    sourceBilibili: ["B 站线路", "bilibili", "公式"],
+    sourceMainland: ["大陆镜像", "Mainland mirror", "本土ミラー"],
+    sourceOverseas: ["海外镜像", "Overseas mirror", "海外ミラー"],
+    sourceCustom: ["自定义", "Custom", "カスタム"],
+    diagTitle: ["导出诊断信息", "Export diagnostics", "診断情報をエクスポート"],
+    diagDesc: ["把版本、浏览器、设置、线路状态、最近的错误和上次自检结果整理成一段文本，方便在 Issues 里附上。不包含页面标题和视频地址。", "Collects version, browser, settings, host status, recent errors and the last self test into text you can attach to an issue. Page titles and video addresses are left out.", "バージョン、ブラウザ、設定、ホストの状態、最近のエラー、前回の診断結果をまとめます。Issues に添付できます。ページタイトルや動画アドレスは含みません。"],
+    copyDiag: ["复制", "Copy", "コピー"],
+    downloadDiag: ["下载", "Download", "ダウンロード"],
+    copied: ["已复制", "Copied", "コピーしました"],
     viewLicense: ["查看许可证", "View license", "ライセンスを表示"],
     copyright: ["版权所有 © 2026 ShinyAkira", "Copyright © 2026 ShinyAkira", "Copyright © 2026 ShinyAkira"],
     madeBy: ["ShinyAkira 作品", "By ShinyAkira", "ShinyAkira 作"],
@@ -128,7 +156,15 @@
   }
 
   // Who made Biliweaver; shown on the About page, in the popup and in the README.
-  const ABOUT = Object.freeze({ author: "ShinyAkira", github: "https://github.com/ShinyAkira106", year: 2026, license: "MIT" });
+  const ABOUT = Object.freeze({
+    author: "ShinyAkira",
+    profile: "https://github.com/ShinyAkira106",
+    github: "https://github.com/ShinyAkira106/biliweaver",
+    issues: "https://github.com/ShinyAkira106/biliweaver/issues/new",
+    releases: "https://github.com/ShinyAkira106/biliweaver/releases",
+    year: 2026,
+    license: "MIT"
+  });
 
   const api = Object.freeze({ LANGS, NAMES, ABOUT, resolve, t, apply, keys: Object.freeze(Object.keys(TEXT)) });
   Object.defineProperty(scope, "BiliweaverI18n", { value: api, configurable: false, enumerable: false, writable: false });
