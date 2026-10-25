@@ -199,6 +199,42 @@ window.__NEPTUNE_IS_MY_WAIFU__ = { roomInitRes: { data: { playurl_info: { playur
     assert.ok(Math.abs(oursWithStroke - painted.gear * 0.92) <= 1.5, JSON.stringify(painted));
   });
 
+  await check("in fullscreen the icon stays level with the native ones", async () => {
+    const measure = () => page.evaluate(() => {
+      const center = (svg) => {
+        const rect = svg.getBoundingClientRect();
+        const box = svg.getBBox();
+        const view = svg.viewBox.baseVal;
+        const scale = Math.min(rect.width / view.width, rect.height / view.height);
+        return rect.top + (rect.height - view.height * scale) / 2 + (box.y - view.y + box.height / 2) * scale;
+      };
+      const ours = document.querySelector(".biliweaver-ctrl");
+      const gear = document.querySelector(".bpx-player-ctrl-setting");
+      return {
+        ours: center(ours.querySelector("svg")), gear: center(gear.querySelector("svg")),
+        oursHeight: ours.getBoundingClientRect().height, gearHeight: gear.getBoundingClientRect().height
+      };
+    });
+    // Like the real player: in fullscreen the buttons get taller, padded and larger icons,
+    // a moment after the switch.
+    await page.evaluate(() => {
+      const style = document.createElement("style");
+      style.textContent = ".fs .bpx-player-ctrl-btn{height:48px;padding-top:10px;box-sizing:border-box;align-items:flex-start}.fs .bpx-player-ctrl-btn svg{width:30px;height:30px}";
+      document.head.append(style);
+      setTimeout(() => document.getElementById("player").classList.add("fs"), 120);
+      document.getElementById("player").requestFullscreen?.().catch(() => {});
+    });
+    await page.waitForTimeout(900);
+    const big = await measure();
+    assert.ok(Math.abs(big.ours - big.gear) <= 1, `fullscreen: ${JSON.stringify(big)}`);
+    assert.ok(Math.abs(big.oursHeight - big.gearHeight) <= 1, `fullscreen height: ${JSON.stringify(big)}`);
+    await page.screenshot({ path: path.join(process.env.SHOT_DIR || __dirname, "fullscreen-bar.png"), clip: { x: 0, y: 0, width: 1000, height: 600 } });
+    await page.evaluate(() => { document.getElementById("player").classList.remove("fs"); return document.exitFullscreen?.().catch(() => {}); });
+    await page.waitForTimeout(900);
+    const small = await measure();
+    assert.ok(Math.abs(small.ours - small.gear) <= 1, `windowed: ${JSON.stringify(small)}`);
+  });
+
   await check("hovering the button plays the weaving animation, clicking does not need it", async () => {
     await page.mouse.move(10, 10);
     await page.hover("#right .biliweaver-ctrl");

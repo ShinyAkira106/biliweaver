@@ -109,6 +109,9 @@
 
   function removeButton() {
     closePanel();
+    sizeWatch?.disconnect();
+    sizeWatch = null;
+    watched = null;
     document.querySelectorAll(`.${BUTTON_CLASS}`).forEach((element) => element.remove());
     host = null;
     panelRoot = null;
@@ -189,6 +192,7 @@
     if (!reference) return;
     const style = getComputedStyle(reference);
     const box = reference.getBoundingClientRect();
+    watchSize(slot, reference);
     Object.assign(host.style, {
       height: style.height !== "auto" ? style.height : `${Math.round(box.height)}px`,
       marginLeft: style.marginLeft,
@@ -208,6 +212,55 @@
     }
     // The button is as wide as the native one, or its icon plus the same breathing room.
     host.style.width = style.width !== "auto" && parseFloat(style.width) > 0 ? style.width : `${size + 14}px`;
+    // Finally line the glyph up with the native one by its visual center. Boxes alone are
+    // not enough: in fullscreen the player sizes and pads its buttons differently.
+    if (svg) {
+      svg.style.transform = "";
+      const ours = drawnGlyphCenter(svg);
+      const theirs = drawnGlyphCenter(reference.querySelector("svg"));
+      if (ours !== null && theirs !== null) {
+        const shift = Math.round((theirs - ours) * 2) / 2;
+        if (Math.abs(shift) >= 0.5 && Math.abs(shift) < 24) svg.style.transform = `translateY(${shift}px)`;
+      }
+    }
+  }
+
+  // The vertical middle, in page pixels, of what an <svg> paints.
+  function drawnGlyphCenter(icon) {
+    if (!icon) return null;
+    const rect = icon.getBoundingClientRect();
+    if (!rect.height) return null;
+    try {
+      const box = icon.getBBox();
+      const view = icon.viewBox?.baseVal;
+      if (view && view.height && box.height) {
+        const scale = Math.min(rect.width / view.width, rect.height / view.height);
+        // The viewBox is centered inside the element when the aspect ratios differ.
+        const offsetY = (rect.height - view.height * scale) / 2;
+        return rect.top + offsetY + (box.y - view.y + box.height / 2) * scale;
+      }
+    } catch (_error) {}
+    return rect.top + rect.height / 2;
+  }
+
+  // Follow the native button: whenever its size changes (entering or leaving fullscreen,
+  // widescreen mode, a window resize), measure again once the player has settled.
+  let sizeWatch = null;
+  let watched = null;
+  function watchSize(slot, reference) {
+    if (typeof ResizeObserver !== "function" || watched === reference) return;
+    sizeWatch?.disconnect();
+    watched = reference;
+    let frame = 0;
+    sizeWatch = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const current = findSlot();
+        if (current && host?.isConnected) align(current);
+      });
+    });
+    sizeWatch.observe(reference);
+    sizeWatch.observe(slot.element);
   }
 
   // The larger side, in CSS pixels, of what an <svg> actually paints.
@@ -663,8 +716,15 @@
   // Start once the page has a body, and follow the player as it rebuilds.
   // ---------------------------------------------------------------------------------
   // The player draws its controls larger in fullscreen; measure again when that changes.
-  const realign = () => requestAnimationFrame(() => { const slot = findSlot(); if (slot && host) align(slot); });
+  const realignNow = () => { const slot = findSlot(); if (slot && host) align(slot); };
+  // The player resizes its controls over a few frames after the switch; measure a few times.
+  const realign = () => {
+    requestAnimationFrame(realignNow);
+    setTimeout(realignNow, 200);
+    setTimeout(realignNow, 600);
+  };
   document.addEventListener("fullscreenchange", realign);
+  document.addEventListener("webkitfullscreenchange", realign);
   window.addEventListener("resize", realign);
 
   function start() {

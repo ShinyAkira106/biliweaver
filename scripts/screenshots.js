@@ -48,23 +48,24 @@ html,body{margin:0;background:#101114;font-family:-apple-system,BlinkMacSystemFo
 <div class="bpx-player-ctrl-btn">${icon('<path d="M4 8V4h4M14 4h4v4M18 14v4h-4M8 18H4v-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>')}</div>
 </div></div></div></body></html>`;
 
+// Host names in the pictures are made up (example.* domains); no real CDN appears.
 const FAKE_STATS = JSON.stringify({ version: "", enabled: true, page: "video", speedBps: 11.6 * 1024 * 1024, activeThreads: 8, queued: 0, acceleratedRequests: 42, acceleratedBytes: 186.4 * 1024 * 1024, cacheHits: 17, fallbacks: 0, liveSegments: 0, recentErrors: [], hosts: [
-  { host: "upos-sz-mirrorcos.bilivideo.com", speedKBps: 4710, bytes: 61e6, requests: 40, errors: 0, inflight: 3, cooling: false },
-  { host: "upos-sz-mirrorali.bilivideo.com", speedKBps: 3980, bytes: 52e6, requests: 35, errors: 0, inflight: 2, cooling: false },
-  { host: "upos-hz-mirrorakam.akamaized.net", speedKBps: 2350, bytes: 41e6, requests: 28, errors: 0, inflight: 2, cooling: false },
-  { host: "upos-sz-mirrorhw.bilivideo.com", speedKBps: 1460, bytes: 32e6, requests: 22, errors: 1, inflight: 1, cooling: false }
+  { host: "edge-sh-01.example-cdn.net", speedKBps: 4710, bytes: 61e6, requests: 40, errors: 0, inflight: 3, cooling: false },
+  { host: "edge-bj-02.example-cdn.net", speedKBps: 3980, bytes: 52e6, requests: 35, errors: 0, inflight: 2, cooling: false },
+  { host: "global-edge-hk.example-overseas.net", speedKBps: 2350, bytes: 41e6, requests: 28, errors: 0, inflight: 2, cooling: false },
+  { host: "edge-gz-03.example-cdn.net", speedKBps: 1460, bytes: 32e6, requests: 22, errors: 1, inflight: 1, cooling: false }
 ] });
 
 // Plausible self test results for the pictures. A local simulation answers instantly,
 // which would show unrealistic speeds; the captions say these are example numbers.
 const DEMO_SELF_TEST = { ok: true, tested: 10, working: 8, results: [
-  ["upos-sz-mirrorcos.bilivideo.com", "bilibili", 38, 10040], ["upos-sz-mirrorali.bilivideo.com", "bilibili", 45, 8290],
-  ["upos-sz-mirrorcoso1.bilivideo.com", "mainland", 52, 7580], ["upos-sz-mirrorhw.bilivideo.com", "mainland", 61, 6350],
-  ["upos-sz-mirroralib.bilivideo.com", "mainland", 58, 6040], ["upos-sz-mirroraliov.bilivideo.com", "overseas", 212, 2150],
-  ["upos-sz-mirrorcosov.bilivideo.com", "overseas", 236, 1840], ["upos-sz-mirrorhwov.bilivideo.com", "overseas", 251, 1630]
+  ["edge-sh-01.example-cdn.net", "bilibili", 38, 10040], ["edge-bj-02.example-cdn.net", "bilibili", 45, 8290],
+  ["mirror-hz-1.example-mirror.net", "mainland", 52, 7580], ["mirror-sz-2.example-mirror.net", "mainland", 61, 6350],
+  ["mirror-cd-3.example-mirror.net", "mainland", 58, 6040], ["mirror-tokyo.example-overseas.net", "overseas", 212, 2150],
+  ["mirror-singapore.example-overseas.net", "overseas", 236, 1840], ["mirror-losangeles.example-overseas.net", "overseas", 251, 1630]
 ].map(([host, source, firstByteMs, speedKBps]) => ({ host, source, ok: true, firstByteMs, speedKBps, pcdn: false })).concat([
-  { host: "upos-sz-mirror08c.bilivideo.com", source: "mainland", ok: false, error: "timed out", pcdn: false },
-  { host: "upos-hz-mirrorakam.akamaized.net", source: "overseas", ok: false, error: "HTTP 403", pcdn: false }
+  { host: "mirror-wh-4.example-mirror.net", source: "mainland", ok: false, error: "timed out", pcdn: false },
+  { host: "global-edge-hk.example-overseas.net", source: "overseas", ok: false, error: "HTTP 403", pcdn: false }
 ]) };
 
 (async () => {
@@ -144,6 +145,10 @@ const DEMO_SELF_TEST = { ok: true, tested: 10, working: 8, results: [
   await setLanguage("zh-CN");
   const popup = await context.newPage();
   await popup.setViewportSize({ width: 340, height: 600 });
+  // Shown dark, as it looks in a browser using the dark theme.
+  await popup.emulateMedia({ colorScheme: "dark" });
+  // The popup follows the system theme; most people see it dark, as in the real toolbar.
+  await popup.emulateMedia({ colorScheme: "dark" });
   await page.bringToFront();
   await popup.goto(`chrome-extension://${id}/popup/popup.html`);
   await popup.waitForTimeout(400);

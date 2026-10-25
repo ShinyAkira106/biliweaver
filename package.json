@@ -1,6 +1,6 @@
 {
   "name": "biliweaver",
-  "version": "1.3.2",
+  "version": "1.3.2-1",
   "private": true,
   "description": "Chrome extension that speeds up bilibili video buffering with parallel multi-CDN range downloads.",
   "license": "MIT",
