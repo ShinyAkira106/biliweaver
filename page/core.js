@@ -226,13 +226,123 @@
   };
 
   // ---------------------------------------------------------------------------------
+  // Protection: what the engine does on its own when things go wrong.
+  // ---------------------------------------------------------------------------------
+  const PAUSE_AFTER_FAILURES = 5;
+  const FAILURE_WINDOW_MS = 60 * 1000;
+  const PAUSE_MS = 5 * 60 * 1000;
+  const RATE_LIMIT_HITS = 3;
+  const RATE_LIMIT_WINDOW_MS = 30 * 1000;
+  const RECOVER_EVERY_MS = 60 * 1000;
+  const MIN_THREADS = 2;
+
+  const guard = {
+    failures: [],
+    pausedUntil: 0,
+    pausedReason: "",
+    rateHits: [],
+    threadLimit: Infinity,
+    lastRateHit: 0,
+    lastCut: 0,
+    hlsFallback: false
+  };
+  bw.guard = {
+    // Requests that Biliweaver had to hand back to the browser. Several in a short time
+    // mean something is wrong with this page; stop trying for a while.
+    failure(reason) {
+      const now = Date.now();
+      guard.failures = guard.failures.filter((at) => now - at < FAILURE_WINDOW_MS);
+      guard.failures.push(now);
+      if (guard.failures.length >= PAUSE_AFTER_FAILURES && guard.pausedUntil <= now) {
+        guard.pausedUntil = now + PAUSE_MS;
+        guard.pausedReason = String(reason || "").slice(0, 120);
+        guard.failures = [];
+        bw.recordError("paused", "", guard.pausedReason);
+      }
+    },
+    success() {
+      guard.failures = [];
+    },
+    paused() {
+      return guard.pausedUntil > Date.now();
+    },
+    resume() {
+      guard.pausedUntil = 0;
+      guard.pausedReason = "";
+      guard.failures = [];
+    },
+    // The CDN said "too many requests". Halve the threads after a few of those, then give
+    // them back one step a minute while it stays quiet.
+    rateLimited(host, status) {
+      const now = Date.now();
+      guard.lastRateHit = now;
+      guard.rateHits = guard.rateHits.filter((at) => now - at < RATE_LIMIT_WINDOW_MS);
+      guard.rateHits.push(now);
+      // One burst of refusals (several pieces failing at once) counts as one signal: after
+      // a cut, wait a little before cutting again.
+      if (guard.rateHits.length >= RATE_LIMIT_HITS && now - guard.lastCut > 10 * 1000) {
+        guard.lastCut = now;
+        const current = Math.min(guard.threadLimit, bw.settings.threads);
+        guard.threadLimit = Math.max(MIN_THREADS, Math.floor(current / 2));
+        guard.rateHits = [];
+        bw.recordError("throttled", host, `HTTP ${status}; threads lowered to ${guard.threadLimit}`);
+      }
+    },
+    threads() {
+      const now = Date.now();
+      if (guard.threadLimit !== Infinity && now - guard.lastRateHit > RECOVER_EVERY_MS) {
+        guard.threadLimit = guard.threadLimit * 2 >= bw.settings.threads ? Infinity : guard.threadLimit * 2;
+        guard.lastRateHit = now;
+      }
+      return Math.max(1, Math.min(bw.settings.threads, guard.threadLimit));
+    },
+    markHlsFallback() { guard.hlsFallback = true; },
+    reset() {
+      Object.assign(guard, { failures: [], pausedUntil: 0, pausedReason: "", rateHits: [], threadLimit: Infinity, lastRateHit: 0, lastCut: 0, hlsFallback: false });
+    },
+    snapshot() {
+      const now = Date.now();
+      return {
+        paused: guard.pausedUntil > now,
+        pausedReason: guard.pausedReason,
+        resumeInMs: Math.max(0, guard.pausedUntil - now),
+        threadLimit: guard.threadLimit === Infinity ? null : guard.threadLimit,
+        hlsFallback: guard.hlsFallback,
+        prefetchHeld: bw.media.prefetchHeld()
+      };
+    }
+  };
+  root.document?.addEventListener("biliweaver:resume", () => bw.guard.resume());
+
+  // ---------------------------------------------------------------------------------
+  // Saving bandwidth: no prefetch while the video is paused or the browser asks to save
+  // data. The video element's own events tell which.
+  // ---------------------------------------------------------------------------------
+  let videoPaused = false;
+  bw.media = {
+    update(paused) { videoPaused = paused === true; },
+    saveData() { return root.navigator?.connection?.saveData === true; },
+    prefetchHeld() {
+      if (this.saveData()) return "saveData";
+      if (videoPaused) return "paused";
+      return null;
+    }
+  };
+  for (const type of ["play", "playing", "pause", "ended"]) {
+    root.document?.addEventListener(type, (event) => {
+      if (event.target?.tagName !== "VIDEO") return;
+      bw.media.update(type === "pause" || type === "ended");
+    }, true);
+  }
+
+  // ---------------------------------------------------------------------------------
   // Connection slots. Foreground requests (the player waits for them) always go ahead of
   // prefetch requests.
   // ---------------------------------------------------------------------------------
   const waiting = { high: [], low: [] };
   let inUse = 0;
   function pump() {
-    while (inUse < bw.settings.threads && (waiting.high.length || waiting.low.length)) {
+    while (inUse < bw.guard.threads() && (waiting.high.length || waiting.low.length)) {
       const next = waiting.high.shift() || waiting.low.shift();
       if (next.cancelled) continue;
       next.cancelled = true;
@@ -276,7 +386,7 @@
     },
     // A slot right now, or null; used for hedged duplicates, which must never queue.
     tryAcquire() {
-      if (inUse >= bw.settings.threads || waiting.high.length) return null;
+      if (inUse >= bw.guard.threads() || waiting.high.length) return null;
       inUse += 1;
       return release();
     },
@@ -314,7 +424,8 @@
       speedBps: bw.stats.speedBps(),
       ...counters,
       hosts: bw.hosts.snapshot(),
-      recentErrors: bw.recentErrors()
+      recentErrors: bw.recentErrors(),
+      protection: bw.guard.snapshot()
     };
     const text = JSON.stringify(snapshot);
     // Unchanged stats still go out every few seconds, so the service worker knows the

@@ -119,6 +119,7 @@
   intercept.addRoute((request) => {
     if (request.method !== "GET" || !isMedia(request.url)) return null;
     if (bw.isReady && !bw.settings.enabled) return null;
+    if (bw.guard.paused()) return null;
     const rangeHeader = request.headers.get("range");
     if (rangeHeader && !util.parseRangeHeader(rangeHeader)) return null;
     return async () => {
@@ -142,6 +143,7 @@
         "x-biliweaver": "1"
       };
       if (rangeHeader) headers["content-range"] = `bytes ${result.start}-${result.end}/${result.total}`;
+      bw.guard.success();
       return intercept.makeResponse(result.stream(), { status: rangeHeader ? 206 : 200, headers, url: request.url });
     };
   });

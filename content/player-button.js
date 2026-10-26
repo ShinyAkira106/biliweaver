@@ -347,6 +347,7 @@
         <div><b data-stat="threads">0</b><span data-i18n="threadsNow"></span></div>
         <div><b data-stat="bytes">0 B</b><span data-i18n="accelerated"></span></div>
       </div>
+      <div class="notices" data-stat="notices"></div>
       <div class="group">
         <div class="label" data-i18n="threads"></div>
         <div class="segments" data-key="threads">
@@ -422,6 +423,13 @@
     .toggle[aria-checked=true]{background:#00aeec}
     .toggle[aria-checked=true] i{transform:translateX(14px)}
     button:focus-visible{outline:2px solid #00aeec;outline-offset:2px}
+    .notices:empty{display:none}
+    .notices{display:flex;flex-direction:column;gap:4px;margin:-2px 0 8px}
+    .notice{display:flex;align-items:center;gap:8px;height:28px;white-space:nowrap;padding:4px 8px;border-radius:6px;background:rgba(255,170,60,.14);color:#ffc77a;font-size:12px}
+    .notice.info{background:hsla(0,0%,100%,.07);color:hsla(0,0%,100%,.7)}
+    .notice span{flex:1;min-width:0}
+    .notice button{flex:none;font-size:12px;color:#00aeec}
+    .notice button:hover{text-decoration:underline}
     .hosts{margin-top:6px;font-size:11px;color:hsla(0,0%,100%,.6)}
     .hosts:empty{display:none}
     .hosts .host-row{display:flex;align-items:center;gap:10px;height:20px;font-variant-numeric:tabular-nums}
@@ -617,8 +625,45 @@
     return `${number >= 100 || unit === 0 ? Math.round(number) : number.toFixed(1)} ${units[unit]}`;
   }
 
+  // Notices from the engine's own protection: paused, rate limited, HLS given up, prefetch
+  // on hold. Rebuilt only when their text changes, so a click on "Resume now" is not lost.
+  let noticeKey = "";
+  function renderNotices() {
+    const box = panelRoot?.querySelector("[data-stat=notices]");
+    if (!box) return;
+    const guard = stats?.protection || {};
+    const items = [];
+    if (guard.paused) items.push({ text: t("pausedNotice").replace("{min}", String(Math.max(1, Math.ceil((guard.resumeInMs || 0) / 60000)))), action: "resume" });
+    if (guard.threadLimit && guard.threadLimit < settings.threads) items.push({ text: t("throttledNotice").replace("{n}", String(guard.threadLimit)) });
+    if (guard.hlsFallback && location.hostname === "live.bilibili.com") items.push({ text: t("hlsFallbackNotice") });
+    if (guard.prefetchHeld && settings.prefetch) items.push({ text: t(guard.prefetchHeld === "saveData" ? "prefetchHeldSaveData" : "prefetchHeldPaused"), info: true });
+    const key = JSON.stringify(items) + lang;
+    if (key === noticeKey) return;
+    noticeKey = key;
+    box.replaceChildren(...items.map((item) => {
+      const row = document.createElement("div");
+      row.className = item.info ? "notice info" : "notice";
+      // One line, like every other row: long text ends in "…" and scrolls on hover.
+      const text = document.createElement("span");
+      text.className = "marquee";
+      const inner = document.createElement("span");
+      inner.textContent = item.text;
+      text.title = item.text;
+      text.append(inner);
+      row.append(text);
+      if (item.action === "resume") {
+        const button = document.createElement("button");
+        button.textContent = t("resumeNow");
+        button.addEventListener("click", () => document.dispatchEvent(new CustomEvent("biliweaver:resume")));
+        row.append(button);
+      }
+      return row;
+    }));
+  }
+
   function renderStats() {
     if (!panelRoot) return;
+    renderNotices();
     const set = (name, text) => { const element = panelRoot.querySelector(`[data-stat=${name}]`); if (element) element.textContent = text; };
     set("speed", `${formatBytes(stats?.speedBps)}/s`);
     set("threads", String(stats?.activeThreads || 0));

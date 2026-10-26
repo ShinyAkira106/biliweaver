@@ -300,6 +300,82 @@ test("the route self test checks every candidate host and flags a wrong file siz
   assert.ok(bw.recentErrors().some((error) => error.host === "upos-sz-mirror08c.bilivideo.com"));
 });
 
+test("after repeated failures the engine steps aside for a while", async () => {
+  await fresh();
+  bw.guard.reset();
+  const broken = Object.fromEntries(Object.keys(healthy()).map((host) => [host, { status: 500 }]));
+  resetCdn(broken);
+  setSettings({ prefetch: false, cdn: "original" });
+  for (let i = 0; i < 5; i += 1) {
+    bw.hosts.reset();
+    const response = await pageFetch(mediaUrl, { headers: { Range: "bytes=0-99" } });
+    assert.equal(response.headers.get("x-biliweaver"), null, "a failed attempt falls back to the browser");
+  }
+  assert.ok(bw.guard.paused(), "should pause after five failures in a row");
+  assert.ok(bw.guard.snapshot().paused && bw.guard.snapshot().resumeInMs > 4 * 60 * 1000);
+  resetCdn(healthy());
+  await pageFetch(mediaUrl, { headers: { Range: "bytes=0-99" } });
+  assert.deepEqual(requests.map((item) => item.host), ["upos-sz-mirrorcos.bilivideo.com"], "while paused the request goes out unchanged");
+  context.document.dispatchEvent(new CustomEvent("biliweaver:resume"));
+  assert.equal(bw.guard.paused(), false);
+  bw.guard.reset();
+});
+
+test("rate limiting halves the threads", async () => {
+  await fresh();
+  bw.guard.reset();
+  resetCdn({ ...healthy(), "upos-sz-mirrorali.bilivideo.com": { status: 429 }, "upos-sz-mirrorhw.bilivideo.com": { status: 429 }, "upos-sz-mirror08c.bilivideo.com": { status: 429 } });
+  setSettings({ prefetch: false, threads: 8 });
+  same(await bytesOf(await pageFetch(mediaUrl, { headers: { Range: "bytes=0-4194303" } })), 0, 4194303);
+  assert.equal(bw.guard.snapshot().threadLimit, 4);
+  assert.equal(bw.guard.threads(), 4);
+  assert.ok(bw.recentErrors().some((error) => error.kind === "throttled"));
+  bw.guard.reset();
+});
+
+test("prefetch waits while the video is paused or data saver is on", async () => {
+  await fresh();
+  bw.guard.reset();
+  resetCdn(healthy());
+  setSettings({ prefetch: true });
+  bw.media.update(true);
+  await bytesOf(await pageFetch(mediaUrl, { headers: { Range: "bytes=0-1048575" } }));
+  await sleep(200);
+  assert.ok(requests.every((item) => Number(/bytes=\d+-(\d+)/.exec(item.range)?.[1]) <= 1048575), "no prefetch while paused");
+  assert.equal(bw.guard.snapshot().prefetchHeld, "paused");
+  bw.media.update(false);
+  context.navigator = { connection: { saveData: true } };
+  assert.equal(bw.media.prefetchHeld(), "saveData");
+  await fresh();
+  resetCdn(healthy());
+  await bytesOf(await pageFetch(mediaUrl, { headers: { Range: "bytes=0-1048575" } }));
+  await sleep(200);
+  assert.ok(requests.every((item) => Number(/bytes=\d+-(\d+)/.exec(item.range)?.[1]) <= 1048575), "no prefetch with data saver");
+  delete context.navigator;
+  assert.equal(bw.media.prefetchHeld(), null);
+});
+
+test("a live room where HLS failed keeps its FLV streams", async () => {
+  bw.guard.reset();
+  setSettings({});
+  context.location.pathname = "/7734";
+  storage.set("biliweaver:hls-failed:7734", String(Date.now()));
+  const data = { playurl_info: { playurl: { stream: [
+    { protocol_name: "http_stream", format: [{ format_name: "flv", codec: [{ url_info: [{ host: "https://a.bilivideo.com" }] }] }] },
+    { protocol_name: "http_hls", format: [{ format_name: "fmp4", codec: [{ url_info: [{ host: "https://c.bilivideo.com" }] }] }] }
+  ] } } };
+  bw.live.transformPlayInfo(data);
+  assert.equal(JSON.stringify(data.playurl_info.playurl.stream.map((item) => item.protocol_name)), JSON.stringify(["http_stream", "http_hls"]));
+  assert.equal(bw.guard.snapshot().hlsFallback, true);
+  storage.delete("biliweaver:hls-failed:7734");
+  delete context.location.pathname;
+  bw.guard.reset();
+});
+
+test("the cache budget follows the device memory", async () => {
+  assert.equal(bw.transfer.cacheBudget, 160 * 1024 * 1024);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   const began = Date.now();

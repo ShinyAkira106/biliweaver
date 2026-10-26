@@ -69,6 +69,18 @@ async function refreshStats() {
     $("speed").textContent = stats ? `${formatBytes(stats.speedBps)}/s` : "0";
     $("threads").textContent = stats ? String(stats.activeThreads) : "0";
     $("bytes").textContent = stats ? formatBytes(stats.acceleratedBytes) : "0";
+    const guard = stats?.protection || {};
+    const notes = [];
+    if (guard.paused) notes.push([I18n.t(lang, "pausedNotice").replace("{min}", String(Math.max(1, Math.ceil((guard.resumeInMs || 0) / 60000)))), false]);
+    if (guard.threadLimit && guard.threadLimit < current.threads) notes.push([I18n.t(lang, "throttledNotice").replace("{n}", String(guard.threadLimit)), false]);
+    if (guard.hlsFallback && stats?.page === "live") notes.push([I18n.t(lang, "hlsFallbackNotice"), false]);
+    if (guard.prefetchHeld && current.prefetch) notes.push([I18n.t(lang, guard.prefetchHeld === "saveData" ? "prefetchHeldSaveData" : "prefetchHeldPaused"), true]);
+    $("notices").replaceChildren(...notes.map(([text, info]) => {
+      const row = document.createElement("div");
+      row.className = info ? "notice info" : "notice";
+      row.textContent = text;
+      return row;
+    }));
     const list = (stats?.hosts || []).slice(0, 6);
     $("hostSection").hidden = !list.length;
     // Updated in place, so a host name scrolling under the mouse keeps scrolling.

@@ -77,6 +77,7 @@
       if (error !== PASS) {
         stats.counters.fallbacks += 1;
         bw.recordError("fallback", util.hostOf(request.url), error?.message || String(error));
+        bw.guard.failure(error?.message || String(error));
         bw.log("fetch fallback", request.url, error);
       }
       return native.fetch(input, init);
@@ -263,6 +264,7 @@
         if (error !== PASS) {
           stats.counters.fallbacks += 1;
           bw.recordError("fallback", util.hostOf(request.url), error?.message || String(error));
+          bw.guard.failure(error?.message || String(error));
           bw.log("xhr fallback", request.url, error);
         }
         clearTimeout(timeoutTimer);

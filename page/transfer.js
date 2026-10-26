@@ -12,7 +12,9 @@
   if (!bw || bw.transfer) return;
   const { util, hosts, slots, stats, native } = bw;
 
-  const CACHE_BUDGET = 160 * 1024 * 1024;
+  // Less memory on smaller machines: the player keeps its own buffer as well.
+  const DEVICE_GB = Number(root.navigator?.deviceMemory) || 8;
+  const CACHE_BUDGET = (DEVICE_GB <= 2 ? 48 : DEVICE_GB <= 4 ? 96 : 160) * 1024 * 1024;
   const MAX_ATTEMPTS = 6;
   const HEADER_TIMEOUT_MS = 8000;
   const MIN_SPEED_FOR_TIMEOUT = 24 * 1024; // bytes per second before a piece counts as stalled
@@ -85,6 +87,10 @@
       clearTimeout(headerTimer);
       headerTimer = null;
       if (response.status === 416) throw new TransferError("range not satisfiable", { status: 416 });
+      // 429 is always rate limiting. A 403 from a host that has already served this page
+      // well is too; a 403 from a host never used is just a host that cannot serve the file.
+      if (response.status === 429 || (response.status === 403 && entry.requests > 0)) bw.guard.rateLimited(host, response.status);
+      if (response.status === 429) throw new TransferError("HTTP 429", { status: 429 });
       if (response.status === 403 || response.status === 404) throw new TransferError(`HTTP ${response.status}`, { hard: true, status: response.status });
       if (response.status !== 206) {
         // A server that ignores Range would send the whole file; that host is useless here.
@@ -277,7 +283,7 @@
   // Load ahead of what the player asked for, at low priority, so its next request is
   // already on the way. Stops at the file end and at a few seconds' worth of data.
   function prefetchAfter(file, candidates, end, requested) {
-    if (!bw.settings.prefetch || file.total === null) return;
+    if (!bw.settings.prefetch || file.total === null || bw.media.prefetchHeld()) return;
     let position = end + 1;
     if (position >= file.total) return;
     const budget = Math.min(24 * 1024 * 1024, Math.max(2 * 1024 * 1024, requested * 2));
@@ -399,6 +405,7 @@
     fetchRange,
     TransferError,
     _files: files,
-    cacheSize: () => cachedBytes
+    cacheSize: () => cachedBytes,
+    cacheBudget: CACHE_BUDGET
   });
 })(globalThis);

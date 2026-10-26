@@ -157,6 +157,7 @@ function activeSection() {
 
 function render() {
   lang = I18n.resolve(current.language, navigator.language);
+  renderUpdate();
   I18n.apply(document, lang);
   $("version").textContent = chrome.runtime.getManifest().version;
   const section = activeSection();
@@ -372,6 +373,55 @@ $("reset").addEventListener("click", () => {
   render();
 });
 
+// ---------------------------------------------------------------------------------
+// New version check: once each time this page opens, ask GitHub for the published
+// releases (pre-releases included) and show a banner when one is newer than this copy.
+// ---------------------------------------------------------------------------------
+function versionParts(value) {
+  return String(value || "").replace(/^v/i, "").split(/[.-]/).map((part) => Number.parseInt(part, 10)).map((part) => (Number.isFinite(part) ? part : 0));
+}
+function isNewer(candidate, installed) {
+  const a = versionParts(candidate);
+  const b = versionParts(installed);
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  }
+  return false;
+}
+let latestRelease = null;
+function renderUpdate() {
+  const box = $("update");
+  document.body.classList.toggle("has-update", Boolean(latestRelease));
+  if (!latestRelease) { box.hidden = true; return; }
+  const installed = chrome.runtime.getManifest().version;
+  $("updateTitle").textContent = I18n.t(lang, "updateAvailable").replace("{version}", latestRelease.tag);
+  $("updateDesc").textContent = I18n.t(lang, "updateCurrent").replace("{current}", `v${installed}`);
+  $("updateDownload").textContent = I18n.t(lang, "downloadUpdate");
+  $("updateDownload").href = latestRelease.download || latestRelease.page;
+  $("updateNotes").textContent = I18n.t(lang, "releaseNotes");
+  $("updateNotes").href = latestRelease.page;
+  box.hidden = false;
+}
+async function checkForUpdate() {
+  try {
+    const repo = new URL(I18n.ABOUT.github).pathname.replace(/^\/|\/$/g, "");
+    const response = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=20`, { headers: { Accept: "application/vnd.github+json" }, cache: "no-store" });
+    if (!response.ok) return;
+    const releases = await response.json();
+    const installed = chrome.runtime.getManifest().version;
+    const best = (Array.isArray(releases) ? releases : [])
+      .filter((release) => release && !release.draft && typeof release.tag_name === "string")
+      .sort((a, b) => (isNewer(a.tag_name, b.tag_name) ? -1 : isNewer(b.tag_name, a.tag_name) ? 1 : 0))[0];
+    if (!best || !isNewer(best.tag_name, installed)) return;
+    const asset = (best.assets || []).find((item) => /^biliweaver-v.*\.zip$/i.test(item?.name || "")) || (best.assets || []).find((item) => /\.zip$/i.test(item?.name || ""));
+    const safe = (url) => (/^https:\/\/github\.com\//.test(String(url || "")) ? String(url) : "");
+    latestRelease = { tag: best.tag_name, page: safe(best.html_url) || I18n.ABOUT.releases, download: safe(asset?.browser_download_url) };
+    renderUpdate();
+  } catch (_error) {
+    // Offline or rate limited by GitHub: no banner, nothing else changes.
+  }
+}
+
 window.addEventListener("hashchange", render);
 chrome.storage.onChanged.addListener((_changes, area) => {
   if (area !== "sync") return;
@@ -387,3 +437,4 @@ chrome.storage.sync.get(null, (stored) => {
   render();
 });
 render();
+checkForUpdate();

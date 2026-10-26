@@ -452,6 +452,49 @@ window.__NEPTUNE_IS_MY_WAIFU__ = { roomInitRes: { data: { playurl_info: { playur
     await options.close();
   });
 
+  await check("the panel tells when protection steps in and can resume at once", async () => {
+    await page.evaluate(() => { for (let i = 0; i < 5; i += 1) window.__biliweaver.guard.failure("test"); });
+    await page.click("#right .biliweaver-ctrl");
+    const panel = page.locator("#right .biliweaver-ctrl .panel");
+    await panel.waitFor({ state: "visible", timeout: 2000 });
+    const notice = panel.locator(".notices .notice").first();
+    await notice.waitFor({ timeout: 4000 });
+    await page.screenshot({ path: path.join(process.env.SHOT_DIR || __dirname, "panel-notice.png"), clip: { x: 640, y: 40, width: 340, height: 560 } });
+    await notice.locator("button").click();
+    assert.equal(await page.evaluate(() => window.__biliweaver.guard.paused()), false);
+    await panel.locator(".notices .notice").first().waitFor({ state: "detached", timeout: 4000 });
+    await page.mouse.click(200, 200);
+  });
+
+  await check("the settings page offers a newer release from GitHub", async () => {
+    await context.route("https://api.github.com/repos/ShinyAkira106/biliweaver/releases**", (route) => route.fulfill({
+      headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
+      body: JSON.stringify([
+        { tag_name: "v1.3.2.1", draft: false, prerelease: true, html_url: "https://github.com/ShinyAkira106/biliweaver/releases/tag/v1.3.2.1", assets: [] },
+        { tag_name: "v9.9.9", draft: false, prerelease: true, html_url: "https://github.com/ShinyAkira106/biliweaver/releases/tag/v9.9.9", assets: [{ name: "biliweaver-v9.9.9.zip", browser_download_url: "https://github.com/ShinyAkira106/biliweaver/releases/download/v9.9.9/biliweaver-v9.9.9.zip" }] },
+        { tag_name: "v99.0.0", draft: true, html_url: "https://github.com/x", assets: [] }
+      ])
+    }));
+    const options = await context.newPage();
+    await options.setViewportSize({ width: 1400, height: 900 });
+    await options.goto(`chrome-extension://${extensionId}/options/options.html#basic`);
+    await options.locator("#update").waitFor({ state: "visible", timeout: 5000 });
+    assert.ok((await options.locator("#updateTitle").textContent()).includes("v9.9.9"));
+    assert.equal(await options.locator("#updateDownload").getAttribute("href"), "https://github.com/ShinyAkira106/biliweaver/releases/download/v9.9.9/biliweaver-v9.9.9.zip");
+    assert.equal(await options.locator("#updateNotes").getAttribute("href"), "https://github.com/ShinyAkira106/biliweaver/releases/tag/v9.9.9");
+    await options.screenshot({ path: path.join(process.env.SHOT_DIR || __dirname, "update-banner.png") });
+    await context.unroute("https://api.github.com/repos/ShinyAkira106/biliweaver/releases**");
+    await context.route("https://api.github.com/repos/ShinyAkira106/biliweaver/releases**", (route) => route.fulfill({
+      headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
+      body: JSON.stringify([{ tag_name: "v1.0.0", draft: false, html_url: "https://github.com/ShinyAkira106/biliweaver/releases/tag/v1.0.0", assets: [] }])
+    }));
+    await options.reload();
+    await options.waitForSelector(".setting .desc");
+    await options.waitForTimeout(800);
+    assert.equal(await options.locator("#update").isVisible(), false, "no banner when this copy is newest");
+    await options.close();
+  });
+
   await check("the service worker sees the tab's stats", async () => {
     await page.waitForTimeout(1500);
     const stats = await worker.evaluate(async () => {

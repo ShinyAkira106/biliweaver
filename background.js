@@ -41,6 +41,16 @@ function aggregate(tabId) {
     if (stats.page === "live") out.page = "live";
     for (const key of ["activeThreads", "queued", "speedBps", "acceleratedRequests", "acceleratedBytes", "cacheHits", "fallbacks", "liveSegments"]) out[key] += Number(stats[key]) || 0;
     for (const error of Array.isArray(stats.recentErrors) ? stats.recentErrors : []) out.recentErrors.push(error);
+    const guard = stats.protection;
+    if (guard && typeof guard === "object") {
+      const merged = out.protection || { paused: false, resumeInMs: 0, threadLimit: null, hlsFallback: false, prefetchHeld: null };
+      merged.paused = merged.paused || guard.paused === true;
+      merged.resumeInMs = Math.max(merged.resumeInMs, Number(guard.resumeInMs) || 0);
+      if (guard.threadLimit) merged.threadLimit = merged.threadLimit ? Math.min(merged.threadLimit, guard.threadLimit) : guard.threadLimit;
+      merged.hlsFallback = merged.hlsFallback || guard.hlsFallback === true;
+      merged.prefetchHeld = merged.prefetchHeld || guard.prefetchHeld || null;
+      out.protection = merged;
+    }
     for (const host of Array.isArray(stats.hosts) ? stats.hosts : []) {
       const seen = hostMap.get(host.host);
       if (!seen) hostMap.set(host.host, { ...host });

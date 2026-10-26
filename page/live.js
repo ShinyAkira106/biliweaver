@@ -29,13 +29,64 @@
     return entry.samples ? entry.speed : 0;
   }
 
+  // ---------------------------------------------------------------------------------
+  // HLS fallback: if a room fails to play after HLS was chosen for it, remember that for a
+  // day and leave its FLV streams alone from the next load on.
+  // ---------------------------------------------------------------------------------
+  const HLS_FAILED_KEY = "biliweaver:hls-failed:";
+  const HLS_FAILED_MS = 24 * 60 * 60 * 1000;
+  const HLS_START_TIMEOUT_MS = 20 * 1000;
+  const roomId = () => (/\/(?:blanc\/)?(\d+)/.exec(root.location?.pathname || "") || [])[1] || "";
+  let hlsChosen = false;
+  let hlsVerdict = false;
+
+  function hlsFailedHere() {
+    const room = roomId();
+    if (!room) return false;
+    try {
+      const at = Number(root.localStorage?.getItem(HLS_FAILED_KEY + room)) || 0;
+      if (at && Date.now() - at < HLS_FAILED_MS) return true;
+      if (at) root.localStorage.removeItem(HLS_FAILED_KEY + room);
+    } catch (_error) {}
+    return false;
+  }
+
+  function markHlsFailed(reason) {
+    if (!hlsChosen || hlsVerdict) return;
+    hlsVerdict = true;
+    const room = roomId();
+    try { if (room) root.localStorage?.setItem(HLS_FAILED_KEY + room, String(Date.now())); } catch (_error) {}
+    bw.guard.markHlsFallback();
+    bw.recordError("hls", "", `HLS failed in room ${room || "?"}: ${reason}; FLV from the next load`);
+  }
+
+  function watchHlsStart() {
+    root.document?.addEventListener("error", (event) => {
+      if (event.target?.tagName === "VIDEO") markHlsFailed("video error");
+    }, true);
+    root.document?.addEventListener("playing", (event) => {
+      if (event.target?.tagName === "VIDEO") hlsVerdict = true;
+    }, true);
+    setTimeout(() => {
+      if (hlsVerdict || root.document?.visibilityState !== "visible") return;
+      const videos = [...(root.document?.querySelectorAll("video") || [])];
+      if (!videos.some((video) => video.readyState >= 3 || video.currentTime > 0)) markHlsFailed("did not start within 20 s");
+    }, HLS_START_TIMEOUT_MS);
+  }
+
   function transformPlayInfo(data) {
     const playurl = data?.playurl_info?.playurl;
     const streams = playurl?.stream;
     if (!Array.isArray(streams) || !active()) return false;
     const usable = (stream) => Array.isArray(stream?.format) && stream.format.some((format) => Array.isArray(format?.codec) && format.codec.some((codec) => Array.isArray(codec?.url_info) && codec.url_info.length));
-    if (bw.settings.preferHls && streams.some((stream) => stream?.protocol_name === "http_hls" && usable(stream))) {
+    const hlsAllowed = !hlsFailedHere();
+    if (!hlsAllowed && bw.settings.preferHls) bw.guard.markHlsFallback();
+    if (bw.settings.preferHls && hlsAllowed && streams.some((stream) => stream?.protocol_name === "http_hls" && usable(stream))) {
       playurl.stream = streams.filter((stream) => stream?.protocol_name !== "http_stream");
+      if (!hlsChosen) {
+        hlsChosen = true;
+        watchHlsStart();
+      }
     }
     for (const stream of playurl.stream) {
       if (!Array.isArray(stream?.format)) continue;
@@ -160,7 +211,7 @@
   }
 
   intercept.observe((url) => /\.m3u8(?:[?#]|$)/i.test(url), (text, url) => {
-    if (!active()) return;
+    if (!active() || bw.guard.paused()) return;
     const playlist = parsePlaylist(text, url);
     if (playlist.master) return;
     expire();
@@ -185,5 +236,5 @@
     };
   });
 
-  bw.live = Object.freeze({ transformPlayInfo, parsePlaylist, segments });
+  bw.live = Object.freeze({ transformPlayInfo, parsePlaylist, segments, markHlsFailed, hlsFailedHere });
 })(globalThis);

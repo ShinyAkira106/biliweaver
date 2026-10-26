@@ -112,3 +112,8 @@ html { background: var(--bg); }
 .marquee.scrolling > span { display: inline-block; animation: marquee var(--duration) ease-in-out .3s infinite alternate; }
 @keyframes marquee { 0%, 12% { transform: translateX(0); } 88%, 100% { transform: translateX(var(--shift)); } }
 @media (prefers-reduced-motion: reduce) { .marquee.scrolling > span { animation: none; } .marquee.scrolling { text-overflow: ellipsis; } }
+.notices { margin: 8px 12px 0; display: flex; flex-direction: column; gap: 4px; }
+.notices:empty { display: none; }
+.notice { padding: 6px 10px; border-radius: 8px; background: #fbefd9; color: #8a5a12; font-size: 11.5px; line-height: 1.4; }
+.notice.info { background: var(--accent-soft); color: var(--muted); }
+@media (prefers-color-scheme: dark) { .notice { background: #3a2f1c; color: #f0c27a; } }
