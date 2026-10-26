@@ -96,11 +96,29 @@ The route self test on the settings Status page. Hosts and speeds in these scree
 
 ## 自动保护、省流量和新版本提醒 / Protection, data saving and update notices / 自動保護・通信量の節約・更新のお知らせ
 
-同一个页面短时间内连续出错时，Biliweaver 会暂停加速 5 分钟，让请求按原来的方式发出，面板里会显示原因，也可以点“立即恢复”。CDN 返回限流（429，或者之前正常的主机突然返回 403）时，会把线程数减半，之后每分钟恢复一档。直播间用 HLS 放不出来时，会记住这个直播间，一天内改用 FLV。视频暂停时、浏览器开启省流量模式时，会停止提前下载；缓存上限也会按电脑内存大小自动调整。扩展不会自动更新，所以每次打开完整设置页时，会检查 GitHub 上有没有新版本，有的话在页面顶部显示下载链接。
+### 自动保护 / Automatic protection / 自動保護
 
-After repeated errors on a page, Biliweaver steps aside for 5 minutes so requests go out unchanged; the panel says why and offers "Resume now". When a CDN rate limits (429, or a 403 from a host that was fine before), it halves the threads and restores them a step a minute. If HLS fails to play in a live room, that room uses FLV for a day. Prefetch stops while the video is paused or the browser's data saver is on, and the cache limit follows the computer's memory. The extension doesn't update itself, so each time the full settings page opens it checks GitHub for a newer version and shows a download link at the top.
+同一个页面短时间内连续出错时，Biliweaver 会暂停加速 5 分钟，让请求按原来的方式发出，面板里会显示原因，也可以点“立即恢复”。CDN 返回限流（429，或者之前正常的主机突然返回 403）时，会把线程数减半，之后每分钟恢复一档。直播间用 HLS 放不出来时，会记住这个直播间，一天内改用 FLV。
 
-同じページでエラーが続くと、Biliweaver は 5 分間高速化を止め、リクエストを元の方法で送ります。理由はパネルに表示され、「今すぐ再開」もできます。CDN が制限をかけたとき（429、またはそれまで正常だったホストからの 403）はスレッド数を半分にし、1 分ごとに 1 段階ずつ戻します。ライブ配信で HLS が再生できない場合は、その配信を 1 日 FLV で再生します。一時停止中やデータセーバーが有効なときは先読みを止め、キャッシュの上限はパソコンのメモリに合わせて調整します。自動更新はされないため、設定画面を開くたびに GitHub で新しいバージョンを確認し、あれば画面上部にダウンロードリンクを表示します。
+After repeated errors on a page, Biliweaver steps aside for 5 minutes so requests go out unchanged; the panel says why and offers "Resume now". When a CDN rate limits (429, or a 403 from a host that was fine before), it halves the threads and restores them a step a minute. If HLS fails to play in a live room, that room uses FLV for a day.
+
+同じページでエラーが続くと、Biliweaver は 5 分間高速化を止め、リクエストを元の方法で送ります。理由はパネルに表示され、「今すぐ再開」もできます。CDN が制限をかけたとき（429、またはそれまで正常だったホストからの 403）はスレッド数を半分にし、1 分ごとに 1 段階ずつ戻します。ライブ配信で HLS が再生できない場合は、その配信を 1 日 FLV で再生します。
+
+### 省流量和省内存 / Saving data and memory / 通信量とメモリの節約
+
+视频暂停时、浏览器开启省流量模式时，会停止提前下载；缓存上限也会按电脑内存大小自动调整。
+
+Prefetch stops while the video is paused or the browser's data saver is on, and the cache limit follows the computer's memory.
+
+一時停止中やデータセーバーが有効なときは先読みを止め、キャッシュの上限はパソコンのメモリに合わせて調整します。
+
+### 新版本提醒 / Update notices / 更新のお知らせ
+
+扩展不会自动更新，所以每次打开完整设置页时，会检查 GitHub 上有没有新版本，有的话在页面顶部显示下载链接。
+
+The extension doesn't update itself, so each time the full settings page opens it checks GitHub for a newer version and shows a download link at the top.
+
+自動更新はされないため、設定画面を開くたびに GitHub で新しいバージョンを確認し、あれば画面上部にダウンロードリンクを表示します。
 
 ## 工作原理 / How it works
 
