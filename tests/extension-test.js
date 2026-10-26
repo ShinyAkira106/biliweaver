@@ -158,6 +158,16 @@ window.__NEPTUNE_IS_MY_WAIFU__ = { roomInitRes: { data: { playurl_info: { playur
     await popup.waitForTimeout(300);
     const stored = await worker.evaluate(() => chrome.storage.sync.get(["threads", "enabled"]));
     assert.equal(stored.threads, 16);
+    // The mainland site switch, with its hint, is in the popup too.
+    const hint = await popup.locator("small[data-i18n=blockIntlHint]").textContent();
+    assert.ok(/international site/.test(hint), hint);
+    assert.equal(await popup.isChecked("input[data-key=blockIntl]"), false);
+    await popup.click("label:has(input[data-key=blockIntl]) .switch");
+    await popup.waitForTimeout(300);
+    assert.equal((await worker.evaluate(() => chrome.storage.sync.get("blockIntl"))).blockIntl, true);
+    await popup.click("label:has(input[data-key=blockIntl]) .switch");
+    await popup.waitForTimeout(300);
+    assert.equal((await worker.evaluate(() => chrome.storage.sync.get("blockIntl"))).blockIntl, false);
     await page.waitForFunction(() => window.__biliweaver.settings.threads === 16, null, { timeout: 3000 });
     await popup.screenshot({ path: path.join(process.env.SHOT_DIR || __dirname, "popup.png"), fullPage: true });
     await popup.close();
@@ -512,6 +522,43 @@ window.__NEPTUNE_IS_MY_WAIFU__ = { roomInitRes: { data: { playurl_info: { playur
       return texts.filter(Boolean);
     });
     assert.ok(stats || badge.length, "no stats reached the service worker");
+  });
+
+  await check("international site pages (bangumi, watch later) are accelerated and get the button", async () => {
+    for (const address of ["https://www.bilibili.com/zh-Hans/bangumi/play/ep12345", "https://www.bilibili.com/en/list/watchlater?bvid=BV1test"]) {
+      const intl = await context.newPage();
+      intl.on("pageerror", (error) => errors.push(String(error)));
+      await intl.goto(address);
+      await intl.waitForFunction(() => window.__biliweaver?.isReady === true);
+      assert.equal(intl.url(), address, "stays on the international page while the setting is off");
+      const mark = await intl.evaluate(async (url) => (await fetch(url, { headers: { Range: "bytes=0-65535" } })).headers.get("x-biliweaver"), `https://upos-sz-mirrorcos.bilivideo.com${PATH}`);
+      assert.equal(mark, "1", address);
+      await intl.waitForSelector(".biliweaver-ctrl", { timeout: 5000 });
+      await intl.close();
+    }
+  });
+
+  await check("stay on the mainland site: redirect, cookie, and back off again", async () => {
+    await worker.evaluate(() => chrome.storage.sync.set({ blockIntl: true }));
+    const intl = await context.newPage();
+    intl.on("pageerror", (error) => errors.push(String(error)));
+    await intl.goto("https://www.bilibili.com/zh-Hans/video/BV1test/?p=2&site=OVERSEAS");
+    await intl.waitForURL("https://www.bilibili.com/video/BV1test/?p=2", { timeout: 5000 });
+    const cookie = (await context.cookies("https://www.bilibili.com")).find((item) => item.name === "user_site");
+    assert.equal(cookie?.value, "CN");
+    assert.equal(cookie?.domain, ".bilibili.com");
+    // A tab bilibili keeps sending back is left on the international site after two tries.
+    await context.route("https://www.bilibili.com/**/BV1loop*", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>loop</title><script>if (!location.pathname.startsWith('/zh-Hans/')) location.replace('/zh-Hans/video/BV1loop');</script>" }));
+    await intl.goto("https://www.bilibili.com/zh-Hans/video/BV1loop");
+    await intl.waitForTimeout(2500);
+    assert.equal(new URL(intl.url()).pathname, "/zh-Hans/video/BV1loop");
+    await worker.evaluate(() => chrome.storage.sync.set({ blockIntl: false }));
+    await intl.goto("https://www.bilibili.com/video/BV1test/");
+    await intl.waitForFunction(() => window.__biliweaver?.isReady === true);
+    await intl.waitForTimeout(300);
+    const after = (await context.cookies("https://www.bilibili.com")).find((item) => item.name === "user_site");
+    assert.equal(after, undefined, "the cookie the setting set is removed");
+    await intl.close();
   });
 
   const live = await context.newPage();

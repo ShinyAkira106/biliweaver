@@ -117,3 +117,5 @@ html { background: var(--bg); }
 .notice { padding: 6px 10px; border-radius: 8px; background: #fbefd9; color: #8a5a12; font-size: 11.5px; line-height: 1.4; }
 .notice.info { background: var(--accent-soft); color: var(--muted); }
 @media (prefers-color-scheme: dark) { .notice { background: #3a2f1c; color: #f0c27a; } }
+.row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.row-text small { color: var(--muted); font-size: 11px; line-height: 1.35; }

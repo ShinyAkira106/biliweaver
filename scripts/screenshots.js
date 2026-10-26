@@ -49,7 +49,7 @@ html,body{margin:0;background:#101114;font-family:-apple-system,BlinkMacSystemFo
 </div></div></div></body></html>`;
 
 // Host names in the pictures are made up (example.* domains); no real CDN appears.
-const FAKE_STATS = JSON.stringify({ version: "", enabled: true, page: "video", speedBps: 11.6 * 1024 * 1024, activeThreads: 8, queued: 0, acceleratedRequests: 42, acceleratedBytes: 186.4 * 1024 * 1024, cacheHits: 17, fallbacks: 0, liveSegments: 0, recentErrors: [], hosts: [
+const FAKE_STATS = JSON.stringify({ version: "", enabled: true, page: "video", speedBps: 11.6 * 1024 * 1024, activeThreads: 8, queued: 0, acceleratedRequests: 42, acceleratedBytes: 186.4 * 1024 * 1024, cacheHits: 17, fallbacks: 0, liveSegments: 0, recentErrors: [], memory: { bytes: 214 * 1024 * 1024, budget: 512 * 1024 * 1024, aheadSeconds: 86 }, hosts: [
   { host: "edge-sh-01.example-cdn.net", speedKBps: 4710, bytes: 61e6, requests: 40, errors: 0, inflight: 3, cooling: false },
   { host: "edge-bj-02.example-cdn.net", speedKBps: 3980, bytes: 52e6, requests: 35, errors: 0, inflight: 2, cooling: false },
   { host: "global-edge-hk.example-overseas.net", speedKBps: 2350, bytes: 41e6, requests: 28, errors: 0, inflight: 2, cooling: false },
@@ -90,7 +90,7 @@ const DEMO_SELF_TEST = { ok: true, tested: 10, working: 8, results: [
   let [worker] = context.serviceWorkers();
   if (!worker) worker = await context.waitForEvent("serviceworker");
   const id = new URL(worker.url()).host;
-  const setLanguage = (language) => worker.evaluate((value) => chrome.storage.sync.set({ language: value, threads: 8, cdn: "auto" }), language);
+  const setLanguage = (language) => worker.evaluate((value) => chrome.storage.sync.set({ language: value, threads: 8, cdn: "auto", secondaryBuffer: true, bufferSeconds: 90 }), language);
 
   const page = await context.newPage();
   await page.goto("https://www.bilibili.com/video/demo/");
@@ -125,7 +125,7 @@ const DEMO_SELF_TEST = { ok: true, tested: 10, working: 8, results: [
 
   // Settings pages.
   const options = await context.newPage();
-  await options.setViewportSize({ width: 1280, height: 760 });
+  await options.setViewportSize({ width: 1280, height: 900 });
   await setLanguage("zh-CN");
   await options.goto(`chrome-extension://${id}/options/options.html#video`);
   await options.waitForSelector(".setting .desc");

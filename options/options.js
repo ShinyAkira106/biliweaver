@@ -16,12 +16,15 @@ const SECTIONS = [
     { key: "enabled", type: "switch", title: "enabled", desc: "enabledDesc" },
     { key: "language", type: "select", title: "language", desc: "languageDesc", options: () => [["auto", I18n.t(lang, "langAuto")], ...I18n.LANGS.map((code) => [code, I18n.NAMES[code]])] },
     { key: "playerButton", type: "switch", title: "playerButton", desc: "playerButtonDesc" },
-    { key: "badge", type: "switch", title: "badge", desc: "badgeDesc" }
+    { key: "badge", type: "switch", title: "badge", desc: "badgeDesc" },
+    { key: "blockIntl", type: "switch", title: "blockIntl", desc: "blockIntlDesc" }
   ] },
   { id: "video", nav: "navVideo", rows: [
     { key: "threads", type: "select", number: true, title: "threads", desc: "threadsDesc", options: () => Settings.THREAD_CHOICES.map((value) => [value, String(value)]) },
     { key: "chunkKB", type: "select", number: true, title: "chunk", desc: "chunkDesc", options: () => Settings.CHUNK_CHOICES_KB.map((value) => [value, value >= 1024 ? `${value / 1024} MB` : `${value} KB`]) },
     { key: "prefetch", type: "switch", title: "prefetch", desc: "prefetchDesc" },
+    { key: "bufferSeconds", type: "select", number: true, title: "bufferSeconds", desc: "bufferSecondsDesc", options: () => Settings.BUFFER_CHOICES_S.map((value) => [value, I18n.t(lang, "secondsOption").replace("{n}", String(value))]) },
+    { key: "secondaryBuffer", type: "switch", title: "secondaryBuffer", desc: "secondaryBufferDesc" },
     { key: "avoidPcdn", type: "switch", title: "avoidPcdnLong", desc: "avoidPcdnDesc" }
   ] },
   { id: "cdn", nav: "navCdn", rows: [
@@ -275,7 +278,13 @@ function refreshStatus() {
       entry.figures.replaceChildren(
         element("div", {}, [element("b", { text: `${formatBytes(stats.speedBps)}/s` }), element("small", { text: I18n.t(lang, "speed") })]),
         element("div", {}, [element("b", { text: String(stats.activeThreads) }), element("small", { text: I18n.t(lang, "threadsNow") })]),
-        element("div", {}, [element("b", { text: formatBytes(stats.acceleratedBytes) }), element("small", { text: I18n.t(lang, "accelerated") })])
+        element("div", {}, [element("b", { text: formatBytes(stats.acceleratedBytes) }), element("small", { text: I18n.t(lang, "accelerated") })]),
+        ...(stats.page !== "live" && stats.memory?.bytes > 0 ? [
+          element("div", {}, [element("b", { text: formatBytes(stats.memory.bytes) }), element("small", { text: I18n.t(lang, "memoryCache") })])
+        ] : []),
+        ...(stats.page !== "live" && Number.isFinite(stats.memory?.aheadSeconds) ? [
+          element("div", {}, [element("b", { text: I18n.t(lang, "secondsShort").replace("{n}", String(stats.memory.aheadSeconds)) }), element("small", { text: I18n.t(lang, "bufferedAhead") })])
+        ] : [])
       );
       entry.hosts.replaceChildren(...(stats.hosts?.length ? [statusTable(["colHost", "colSpeed", "colData"], stats.hosts.map((host) => element("tr", {}, [
         element("td", { class: host.cooling ? "cooling" : "", text: host.host, title: host.lastError || host.host }),

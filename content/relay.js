@@ -17,12 +17,63 @@
     document.dispatchEvent(new CustomEvent("biliweaver:settings", { detail: JSON.stringify(current) }));
   };
 
+  // "Stay on the mainland site": the user_site cookie asks bilibili for the mainland pages,
+  // and an international address is replaced by the same page there. Only the cookie this
+  // setting set is removed again when it goes off; one the viewer chose stays.
+  const SITE_FLAG = "biliweaver:user-site";
+  const REDIRECTS = "biliweaver:site-redirects";
+  const COOKIE_SCOPE = "domain=.bilibili.com; path=/";
+  const userSite = () => (/(?:^|;\s*)user_site=([^;]*)/.exec(document.cookie) || [])[1] || "";
+  // Two trips back within 15 seconds mean bilibili keeps sending this tab to the
+  // international site (some accounts are only allowed there), so it is left alone.
+  const mayRedirect = () => {
+    try {
+      const now = Date.now();
+      const recent = JSON.parse(sessionStorage.getItem(REDIRECTS) || "[]").filter((at) => now - at < 15000);
+      if (recent.length >= 2) return false;
+      sessionStorage.setItem(REDIRECTS, JSON.stringify([...recent, now]));
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  };
+  let leaving = false;
+  const applySite = (settings) => {
+    if (leaving || window.top !== window || location.hostname !== "www.bilibili.com") return;
+    try {
+      if (settings.enabled && settings.blockIntl) {
+        if (userSite() !== "CN") {
+          document.cookie = `user_site=CN; ${COOKIE_SCOPE}; max-age=31536000`;
+          localStorage.setItem(SITE_FLAG, "1");
+        }
+        const target = globalThis.BiliweaverSite.mainlandUrl(location.href);
+        if (target && target !== location.href) {
+          if (mayRedirect()) {
+            leaving = true;
+            location.replace(target);
+          }
+          else console.info("[Biliweaver] bilibili keeps sending this tab to the international site, so it stays there.");
+        }
+      } else if (localStorage.getItem(SITE_FLAG)) {
+        if (userSite() === "CN") document.cookie = `user_site=; ${COOKIE_SCOPE}; max-age=0`;
+        localStorage.removeItem(SITE_FLAG);
+      }
+    } catch (_error) {}
+  };
+  // The copy kept in localStorage is read at once, so the redirect happens before the page
+  // has loaded; the stored settings confirm it a moment later.
+  try {
+    const cached = localStorage.getItem(Settings.STORAGE_CACHE_KEY);
+    if (cached) applySite(Settings.normalize(JSON.parse(cached)));
+  } catch (_error) {}
+
   const load = () => {
     try {
       chrome.storage.sync.get(null, (stored) => {
         if (chrome.runtime.lastError) return;
         current = Settings.normalize({ ...Settings.DEFAULTS, ...stored });
         send();
+        applySite(current);
       });
     } catch (_error) {
       alive = false;

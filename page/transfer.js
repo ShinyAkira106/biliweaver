@@ -12,9 +12,16 @@
   if (!bw || bw.transfer) return;
   const { util, hosts, slots, stats, native } = bw;
 
-  // Less memory on smaller machines: the player keeps its own buffer as well.
+  // Less memory on smaller machines: the player keeps its own buffer as well. The second
+  // buffer setting lets the cache hold what the player's buffer has no room for, up to
+  // 512 MB (less on machines with less memory).
+  const MB = 1024 * 1024;
   const DEVICE_GB = Number(root.navigator?.deviceMemory) || 8;
-  const CACHE_BUDGET = (DEVICE_GB <= 2 ? 48 : DEVICE_GB <= 4 ? 96 : 160) * 1024 * 1024;
+  const CACHE_BUDGET = (DEVICE_GB <= 2 ? 48 : DEVICE_GB <= 4 ? 96 : 160) * MB;
+  const SECOND_BUFFER_BUDGET = Math.max(CACHE_BUDGET, Math.min(512, DEVICE_GB * 64) * MB);
+  const budget = () => (bw.settings.secondaryBuffer ? SECOND_BUFFER_BUDGET : CACHE_BUDGET);
+  // Video and audio are loaded ahead at the same time, so each may use this share.
+  const FILE_SHARE = 0.4;
   const MAX_ATTEMPTS = 6;
   const HEADER_TIMEOUT_MS = 8000;
   const MIN_SPEED_FOR_TIMEOUT = 24 * 1024; // bytes per second before a piece counts as stalled
@@ -51,13 +58,27 @@
     entry.data = null;
   }
 
+  // Where playback is in this file, in bytes, or null when that cannot be told.
+  function playedBytes(file) {
+    const position = bw.media.position();
+    const rate = bw.media.bytesPerSecond(file.key, file.total);
+    return position !== null && rate > 0 ? position * rate : null;
+  }
+
+  // Over budget, pieces go oldest first, and the ones playback has already passed (more
+  // than ten seconds back) before any that are still ahead.
   function evict() {
-    if (cachedBytes <= CACHE_BUDGET) return;
+    const limit = budget();
+    if (cachedBytes <= limit) return;
     const done = [];
-    for (const file of files.values()) for (const entry of file.entries) if (entry.data && entry.waiters <= 0) done.push([file, entry]);
-    done.sort((a, b) => a[1].lastUse - b[1].lastUse);
+    for (const file of files.values()) {
+      const played = playedBytes(file);
+      const behind = played === null ? -1 : played - 10 * bw.media.bytesPerSecond(file.key, file.total);
+      for (const entry of file.entries) if (entry.data && entry.waiters <= 0) done.push([file, entry, entry.end < behind ? 0 : 1]);
+    }
+    done.sort((a, b) => a[2] - b[2] || a[1].lastUse - b[1].lastUse);
     for (const [file, entry] of done) {
-      if (cachedBytes <= CACHE_BUDGET * 0.8) break;
+      if (cachedBytes <= limit * 0.8) break;
       dropEntry(file, entry);
     }
   }
@@ -280,14 +301,39 @@
     return pieces;
   }
 
+  // How far past `end` to load ahead: up to the buffer length setting (45 seconds unless
+  // changed) past the playback position, counted in this stream's bytes per second. When
+  // the bit rate is not known yet, twice the request, between 2 and 24 MB.
+  function prefetchWindow(file, end, requested) {
+    const rate = bw.media.bytesPerSecond(file.key, file.total);
+    const cap = budget() * FILE_SHARE;
+    if (rate <= 0) return Math.min(24 * MB, Math.max(2 * MB, requested * 2));
+    const played = playedBytes(file);
+    const target = (played === null ? end : played) + bw.settings.bufferSeconds * rate;
+    return Math.min(cap, Math.max(2 * MB, target - end));
+  }
+
+  // After a seek, pieces loaded ahead for the old position are only in the way: those not
+  // finished yet that lie before the new request or past the new window are stopped.
+  function dropStalePrefetch(file, start, limit) {
+    for (const entry of [...file.entries]) {
+      if (entry.done || entry.waiters > 0 || entry.ref.priority !== "low") continue;
+      if (entry.end >= start && entry.start <= limit) continue;
+      entry.controller.abort();
+      dropEntry(file, entry);
+    }
+  }
+
   // Load ahead of what the player asked for, at low priority, so its next request is
-  // already on the way. Stops at the file end and at a few seconds' worth of data.
-  function prefetchAfter(file, candidates, end, requested) {
-    if (!bw.settings.prefetch || file.total === null || bw.media.prefetchHeld()) return;
+  // already on the way. Stops at the file end and at the buffer length setting.
+  function prefetchAfter(file, candidates, start, end, requested) {
+    if (file.total === null) return;
+    const ahead = prefetchWindow(file, end, requested);
+    dropStalePrefetch(file, start, end + ahead);
+    if (!bw.settings.prefetch || bw.media.prefetchHeld()) return;
     let position = end + 1;
     if (position >= file.total) return;
-    const budget = Math.min(24 * 1024 * 1024, Math.max(2 * 1024 * 1024, requested * 2));
-    const limit = Math.min(file.total - 1, end + budget);
+    const limit = Math.min(file.total - 1, end + ahead);
     while (position <= limit) {
       const entry = findEntry(file, position);
       if (entry) { position = entry.end + 1; continue; }
@@ -355,7 +401,7 @@
     const last = Math.min(end === null ? file.total - 1 : end, file.total - 1);
     const covered = pieces.reduce((sum, piece) => sum + Math.min(piece.length, piece.entry.end - piece.entry.start + 1 - piece.from), 0);
     if (start + covered <= last) pieces = pieces.concat(adopt(plan(file, candidates, start + covered, last, "high")));
-    prefetchAfter(file, candidates, last, last - start + 1);
+    prefetchAfter(file, candidates, start, last, last - start + 1);
     stats.counters.acceleratedRequests += 1;
 
     const cleanup = () => releaseAll(false);
@@ -401,11 +447,36 @@
     return { total: file.total, start, end: last, contentType: file.contentType || "video/mp4", stream, body };
   }
 
+  // What the cache holds: its size and limit, and how many seconds past the playback
+  // position are loaded without a gap, for the stream that has the fewest (the video and
+  // the audio both have to be there to play).
+  function memorySnapshot() {
+    let aheadSeconds = null;
+    const now = Date.now();
+    for (const file of files.values()) {
+      if (now - file.lastUse > 20000 || file.total === null) continue;
+      const rate = bw.media.bytesPerSecond(file.key, file.total);
+      const played = playedBytes(file);
+      if (rate <= 0 || played === null) continue;
+      let position = Math.floor(played);
+      for (;;) {
+        const entry = file.entries.find((item) => item.done && item.data && item.start <= position && item.end >= position);
+        if (!entry) break;
+        position = entry.end + 1;
+      }
+      const seconds = Math.max(0, (position - played) / rate);
+      aheadSeconds = aheadSeconds === null ? seconds : Math.min(aheadSeconds, seconds);
+    }
+    return { bytes: cachedBytes, budget: budget(), aheadSeconds: aheadSeconds === null ? null : Math.round(aheadSeconds) };
+  }
+
   bw.transfer = Object.freeze({
+    memorySnapshot,
     fetchRange,
     TransferError,
     _files: files,
     cacheSize: () => cachedBytes,
-    cacheBudget: CACHE_BUDGET
+    cacheBudget: budget,
+    prefetchWindow
   });
 })(globalThis);

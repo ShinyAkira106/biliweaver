@@ -8,6 +8,7 @@
   const THREAD_CHOICES = Object.freeze([2, 4, 8, 12, 16, 24, 32]);
   const CHUNK_CHOICES_KB = Object.freeze([256, 512, 1024, 2048]);
   const CDN_MODES = Object.freeze(["auto", "mainland", "overseas", "original", "custom"]);
+  const BUFFER_CHOICES_S = Object.freeze([30, 45, 90, 180]);
 
   // Public mirror hosts of the bilibili video store. Signed video URLs stay valid when only
   // the host changes, so any of these can serve the same file. Hosts that do not answer
@@ -36,12 +37,15 @@
     threads: 8,
     chunkKB: 512,
     prefetch: true,
+    bufferSeconds: 45,
+    secondaryBuffer: false,
     cdn: "auto",
     customHosts: Object.freeze([]),
     avoidPcdn: true,
     badge: true,
     playerButton: true,
-    language: "auto"
+    language: "auto",
+    blockIntl: false
   });
 
   const HOST_PATTERN = /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?(?:\.[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?)+$/;
@@ -74,15 +78,18 @@
       threads: nearest(THREAD_CHOICES, source.threads, DEFAULTS.threads),
       chunkKB: nearest(CHUNK_CHOICES_KB, source.chunkKB, DEFAULTS.chunkKB),
       prefetch: source.prefetch !== false,
+      bufferSeconds: nearest(BUFFER_CHOICES_S, source.bufferSeconds, DEFAULTS.bufferSeconds),
+      secondaryBuffer: source.secondaryBuffer === true,
       cdn: CDN_MODES.includes(source.cdn) ? source.cdn : DEFAULTS.cdn,
       customHosts: cleanHosts(source.customHosts),
       avoidPcdn: source.avoidPcdn !== false,
       badge: source.badge !== false,
       playerButton: source.playerButton !== false,
-      language: ["auto", "zh-CN", "en", "ja"].includes(source.language) ? source.language : "auto"
+      language: ["auto", "zh-CN", "en", "ja"].includes(source.language) ? source.language : "auto",
+      blockIntl: source.blockIntl === true
     };
   }
 
-  const api = Object.freeze({ DEFAULTS, MIRRORS, THREAD_CHOICES, CHUNK_CHOICES_KB, CDN_MODES, normalize, cleanHosts, STORAGE_CACHE_KEY: "biliweaver:settings" });
+  const api = Object.freeze({ DEFAULTS, MIRRORS, THREAD_CHOICES, CHUNK_CHOICES_KB, BUFFER_CHOICES_S, CDN_MODES, normalize, cleanHosts, STORAGE_CACHE_KEY: "biliweaver:settings" });
   Object.defineProperty(scope, "BiliweaverSettings", { value: api, configurable: false, enumerable: false, writable: false });
 })(globalThis);

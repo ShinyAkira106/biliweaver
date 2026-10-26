@@ -51,6 +51,10 @@ function aggregate(tabId) {
       merged.prefetchHeld = merged.prefetchHeld || guard.prefetchHeld || null;
       out.protection = merged;
     }
+    // Each frame has its own cache; the one holding the most is the one playing.
+    if (stats.memory && typeof stats.memory === "object" && (!out.memory || (Number(stats.memory.bytes) || 0) > out.memory.bytes)) {
+      out.memory = { bytes: Number(stats.memory.bytes) || 0, budget: Number(stats.memory.budget) || 0, aheadSeconds: Number.isFinite(stats.memory.aheadSeconds) ? stats.memory.aheadSeconds : null };
+    }
     for (const host of Array.isArray(stats.hosts) ? stats.hosts : []) {
       const seen = hostMap.get(host.host);
       if (!seen) hostMap.set(host.host, { ...host });

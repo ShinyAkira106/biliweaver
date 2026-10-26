@@ -361,6 +361,7 @@
         </div>
       </div>
       <div class="row"><span data-i18n="prefetch"></span><button class="toggle" data-key="prefetch" role="switch" data-i18n-aria="prefetch"><i></i></button></div>
+      <div class="row video-only"><span data-i18n="secondaryBufferShort"></span><span class="row-stat" data-stat="memory"></span><button class="toggle" data-key="secondaryBuffer" role="switch" data-i18n-aria="secondaryBuffer"><i></i></button></div>
       <div class="row"><span data-i18n="avoidPcdn"></span><button class="toggle" data-key="avoidPcdn" role="switch" data-i18n-aria="avoidPcdn"><i></i></button></div>
       <div class="row live-only"><span data-i18n="preferHls"></span><button class="toggle" data-key="preferHls" role="switch" data-i18n-aria="preferHls"><i></i></button></div>
       <button class="row nav-row" data-open="selftest-view"><span data-i18n="selfTest"></span><span class="value"><span data-current="selftest"></span><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
@@ -418,6 +419,7 @@
     .segments button:hover{background:hsla(0,0%,100%,.16)}
     .segments button[aria-pressed=true]{background:#00aeec;color:#fff}
     .row{display:flex;align-items:center;justify-content:space-between;height:30px}
+    .row-stat{margin-left:auto;margin-right:10px;color:rgba(255,255,255,.55);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
     .toggle{position:relative;width:30px;height:16px;border-radius:999px;background:hsla(0,0%,100%,.25);transition:background .15s;flex:none}
     .toggle i{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:transform .15s}
     .toggle[aria-checked=true]{background:#00aeec}
@@ -668,6 +670,12 @@
     set("speed", `${formatBytes(stats?.speedBps)}/s`);
     set("threads", String(stats?.activeThreads || 0));
     set("bytes", formatBytes(stats?.acceleratedBytes));
+    // With the second buffer on: seconds loaded past the playback position, and the memory
+    // the cache holds.
+    const memory = stats?.memory;
+    set("memory", settings.secondaryBuffer && memory && memory.bytes > 0
+      ? `${memory.aheadSeconds === null ? "" : t("secondsShort").replace("{n}", String(memory.aheadSeconds)) + " · "}${formatBytes(memory.bytes)}`
+      : "");
     // Rows are updated in place, so a name that is scrolling on hover keeps scrolling while
     // the numbers refresh every second.
     const list = panelRoot.querySelector("[data-stat=hosts]");
@@ -714,6 +722,7 @@
       });
     });
     panelRoot.querySelector(".live-only").hidden = location.hostname !== "live.bilibili.com";
+    panelRoot.querySelector(".video-only").hidden = location.hostname === "live.bilibili.com";
     panelRoot.querySelector("[data-current=language]").textContent = settings.language === "auto" ? t("langAuto") : I18n.NAMES[settings.language];
     panelRoot.querySelectorAll("[data-language]").forEach((button) => button.setAttribute("aria-checked", String(settings.language === button.dataset.language)));
     renderStats();

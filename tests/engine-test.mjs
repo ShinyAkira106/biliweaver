@@ -372,8 +372,97 @@ test("a live room where HLS failed keeps its FLV streams", async () => {
   bw.guard.reset();
 });
 
-test("the cache budget follows the device memory", async () => {
-  assert.equal(bw.transfer.cacheBudget, 160 * 1024 * 1024);
+test("the cache budget follows the device memory and the second buffer", async () => {
+  setSettings({});
+  assert.equal(bw.transfer.cacheBudget(), 160 * 1024 * 1024);
+  setSettings({ secondaryBuffer: true });
+  assert.equal(bw.transfer.cacheBudget(), 512 * 1024 * 1024);
+  setSettings({});
+});
+
+// A video element the engine can ask for the playback position.
+const withVideo = (video) => { context.document.querySelector = (selector) => (selector === "video" ? video : null); };
+const highestByte = () => Math.max(...requests.map((item) => Number(/bytes=\d+-(\d+)/.exec(item.range)?.[1]) || 0));
+
+test("prefetch reaches the buffer length past the playback position", async () => {
+  for (const [seconds, expectedEnd] of [[45, 45 * 100 * 1024 - 1], [30, 30 * 100 * 1024 - 1]]) {
+    await fresh();
+    bw.guard.reset();
+    resetCdn(healthy());
+    setSettings({ prefetch: true, bufferSeconds: seconds });
+    withVideo({ isConnected: true, currentTime: 0, duration: 600 });
+    bw.media.update(false);
+    // 800 kbit/s: 100 KB for each second of video.
+    bw.media.setBitrate(bw.util.fileKey(mediaUrl), 800 * 1024);
+    await bytesOf(await pageFetch(mediaUrl, { headers: { Range: "bytes=0-1048575" } }));
+    for (let i = 0; i < 60 && bw.slots.inUse + bw.slots.queued; i += 1) await sleep(25);
+    const top = highestByte();
+    assert.ok(Math.abs(top - expectedEnd) < 1024 * 1024, `${seconds} s should reach about ${expectedEnd}, reached ${top}`);
+    const memory = bw.transfer.memorySnapshot();
+    assert.ok(memory.aheadSeconds >= seconds - 11 && memory.aheadSeconds <= seconds + 1, `buffered ${memory.aheadSeconds} s`);
+  }
+  delete context.document.querySelector;
+  setSettings({});
+});
+
+test("4K at 180 seconds is held back by memory unless the second buffer is on", async () => {
+  withVideo({ isConnected: true, currentTime: 0, duration: 600 });
+  const key = "test-4k";
+  bw.media.setBitrate(key, 20 * 1000 * 1000);
+  const file = { key, total: 1500 * 1024 * 1024 };
+  setSettings({ bufferSeconds: 180 });
+  assert.equal(Math.round(bw.transfer.prefetchWindow(file, 0, 1) / 1024 / 1024), 64);
+  setSettings({ bufferSeconds: 180, secondaryBuffer: true });
+  assert.equal(Math.round(bw.transfer.prefetchWindow(file, 0, 1) / 1024 / 1024), 205);
+  delete context.document.querySelector;
+  setSettings({});
+});
+
+test("a seek stops pieces loaded ahead for the old position", async () => {
+  await fresh();
+  bw.guard.reset();
+  const slow = {};
+  for (const [host, value] of Object.entries(healthy())) slow[host] = { ...value, bps: 256 * 1024 };
+  resetCdn(slow);
+  setSettings({ prefetch: true, bufferSeconds: 180, threads: 2 });
+  withVideo({ isConnected: true, currentTime: 0, duration: 600 });
+  bw.media.setBitrate(bw.util.fileKey(mediaUrl), 800 * 1024);
+  const first = pageFetch(mediaUrl, { headers: { Range: "bytes=0-65535" } });
+  await bytesOf(await first);
+  const file = bw.transfer._files.get(bw.util.fileKey(mediaUrl));
+  assert.ok(file.entries.some((entry) => !entry.done && entry.start > 4 * 1024 * 1024), "loads far ahead first");
+  context.document.querySelector("video").currentTime = 75;
+  const seekStart = 7 * 1024 * 1024;
+  const second = pageFetch(mediaUrl, { headers: { Range: `bytes=${seekStart}-${seekStart + 65535}` } });
+  await sleep(20);
+  assert.ok(file.entries.every((entry) => entry.done || entry.end >= seekStart), "pieces before the new position stopped");
+  await bytesOf(await second);
+  delete context.document.querySelector;
+  setSettings({});
+  await fresh();
+});
+
+test("international addresses lead to the same page on the mainland site", async () => {
+  const siteContext = vm.createContext({ URL, Intl, Object, String, Set, RegExp, Boolean });
+  siteContext.globalThis = siteContext;
+  vm.runInContext(readFileSync(join(root, "shared/site.js"), "utf8"), siteContext, { filename: "shared/site.js" });
+  const { mainlandUrl } = siteContext.BiliweaverSite;
+  const cases = [
+    ["https://www.bilibili.com/zh-Hans/video/BV1xx411c7mD/?p=2", "https://www.bilibili.com/video/BV1xx411c7mD/?p=2"],
+    ["https://www.bilibili.com/zh-Hans/bangumi/play/ep12345", "https://www.bilibili.com/bangumi/play/ep12345"],
+    ["https://www.bilibili.com/en/list/watchlater?bvid=BV1xx", "https://www.bilibili.com/list/watchlater?bvid=BV1xx"],
+    ["https://www.bilibili.com/ja/list/ml123456?oid=1", "https://www.bilibili.com/list/ml123456?oid=1"],
+    ["https://www.bilibili.com/zh-Hant/", "https://www.bilibili.com/"],
+    ["https://www.bilibili.com/video/BV1xx?site=OVERSEAS&lang=en&t=30", "https://www.bilibili.com/video/BV1xx?t=30"],
+    ["https://www.bilibili.com/video/BV1xx", ""],
+    ["https://www.bilibili.com/", ""],
+    ["https://www.bilibili.com/tv/", ""],
+    ["https://www.bilibili.com/v/popular/all", ""],
+    ["https://www.bilibili.com/id/", "https://www.bilibili.com/"],
+    ["https://live.bilibili.com/zh-Hans/123", ""],
+    ["not a url", ""]
+  ];
+  for (const [input, expected] of cases) assert.equal(mainlandUrl(input), expected, input);
 });
 
 let failed = 0;

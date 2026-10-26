@@ -45,7 +45,12 @@
     }
     const main = value.baseUrl || value.base_url || (typeof value.url === "string" && /\/upgcxcode\//.test(value.url) ? value.url : "");
     const backups = value.backupUrl || value.backup_url;
-    if (typeof main === "string" && main) remember([main, ...(Array.isArray(backups) ? backups.filter((item) => typeof item === "string") : [])]);
+    if (typeof main === "string" && main) {
+      const urls = [main, ...(Array.isArray(backups) ? backups.filter((item) => typeof item === "string") : [])];
+      remember(urls);
+      // The stream's bit rate turns the buffer length setting into bytes.
+      if (Number(value.bandwidth) > 0) for (const url of urls) bw.media.setBitrate(util.fileKey(util.absoluteUrl(url)), value.bandwidth);
+    }
     for (const key of Object.keys(value)) {
       const child = value[key];
       if (child && typeof child === "object") scan(child, depth + 1);

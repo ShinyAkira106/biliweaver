@@ -319,6 +319,14 @@
   // data. The video element's own events tell which.
   // ---------------------------------------------------------------------------------
   let videoPaused = false;
+  let lastVideo = null;
+  // Bytes per second of each stream, from the bandwidth the play address answer lists.
+  const bitrates = new Map();
+  const findVideo = () => {
+    if (lastVideo && lastVideo.isConnected) return lastVideo;
+    lastVideo = root.document?.querySelector?.("video") || null;
+    return lastVideo;
+  };
   bw.media = {
     update(paused) { videoPaused = paused === true; },
     saveData() { return root.navigator?.connection?.saveData === true; },
@@ -326,12 +334,29 @@
       if (this.saveData()) return "saveData";
       if (videoPaused) return "paused";
       return null;
+    },
+    setBitrate(key, bitsPerSecond) {
+      const value = Number(bitsPerSecond);
+      if (key && Number.isFinite(value) && value > 0) bitrates.set(key, value / 8);
+    },
+    // How many bytes of this file one second of video takes: the listed bandwidth, or else
+    // the file size over the video's length. 0 when neither is known.
+    bytesPerSecond(key, total) {
+      if (bitrates.has(key)) return bitrates.get(key);
+      const duration = Number(findVideo()?.duration);
+      return total > 0 && Number.isFinite(duration) && duration > 1 ? total / duration : 0;
+    },
+    // Seconds into the video, or null when there is no video element to ask.
+    position() {
+      const time = Number(findVideo()?.currentTime);
+      return Number.isFinite(time) ? time : null;
     }
   };
-  for (const type of ["play", "playing", "pause", "ended"]) {
+  for (const type of ["play", "playing", "pause", "ended", "loadedmetadata", "seeking"]) {
     root.document?.addEventListener(type, (event) => {
       if (event.target?.tagName !== "VIDEO") return;
-      bw.media.update(type === "pause" || type === "ended");
+      lastVideo = event.target;
+      if (type === "play" || type === "playing" || type === "pause" || type === "ended") bw.media.update(type === "pause" || type === "ended");
     }, true);
   }
 
@@ -425,7 +450,8 @@
       ...counters,
       hosts: bw.hosts.snapshot(),
       recentErrors: bw.recentErrors(),
-      protection: bw.guard.snapshot()
+      protection: bw.guard.snapshot(),
+      memory: bw.transfer?.memorySnapshot?.() || null
     };
     const text = JSON.stringify(snapshot);
     // Unchanged stats still go out every few seconds, so the service worker knows the

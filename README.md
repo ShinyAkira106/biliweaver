@@ -112,6 +112,30 @@ Prefetch stops while the video is paused or the browser's data saver is on, and 
 
 一時停止中やデータセーバーが有効なときは先読みを止め、キャッシュの上限はパソコンのメモリに合わせて調整します。
 
+### 预缓冲时长 / Buffer ahead / 先読みの長さ
+
+提前下载会下载到当前播放位置之后多少秒，可以在设置里选 30、45、90 或 180 秒，默认 45 秒。
+
+Prefetch loads up to a set number of seconds past the playback position: 30, 45, 90 or 180, with 45 by default.
+
+先読みは再生位置から決まった秒数先まで取得します。30、45、90、180 秒から選べ、既定は 45 秒です。
+
+### 二级缓冲 / Second buffer / 二次バッファ
+
+实验性功能，默认关闭。浏览器的视频缓冲区装不下时，提前下载的部分先存在内存里，最多 512 MB。4K、8K 也能多缓冲，拖动到已经下载的位置不用重新下载。打开后，面板里会显示内存里已经缓冲了多少秒。
+
+Experimental and off by default. When the browser's video buffer is full, what was downloaded ahead waits in memory, up to 512 MB. 4K and 8K can buffer further, and seeking to a part already downloaded needs no new download. When it is on, the panel shows how many seconds are waiting in memory.
+
+実験的な機能で、既定ではオフです。ブラウザの動画バッファに入りきらない分を、最大 512 MB までメモリに保持します。4K や 8K でも長く先読みでき、取得済みの位置へシークしても再ダウンロードしません。オンにすると、メモリにある秒数がパネルに表示されます。
+
+### 阻止使用国际版 / Stay on the mainland site / 国際版を使わない
+
+B 站会给海外用户换上国际版网页：地址前面带语言（比如 bilibili.com/zh-Hans），首页没有分区栏。这个设置方便在海外登录的朋友看国内版 B 站，默认关闭，打开后会把 B 站重定向到国内版网页，在设置页和工具栏弹窗里都可以开关。不打开也没关系，国际版里的视频、番剧、稍后再看和收藏夹照常加速。
+
+bilibili may show viewers abroad its international site, with a language in front of the address (such as bilibili.com/zh-Hans) and no channel bar on the home page. This setting is for people signing in from abroad who want mainland bilibili. It is off by default; when on, bilibili is redirected to the mainland site. It can be switched in the settings page and in the toolbar popup. Either way, videos, bangumi, Watch Later and favourites on the international site are accelerated as usual.
+
+bilibili は海外の利用者に国際版のページを表示することがあります（アドレスの前に言語が付き、例：bilibili.com/zh-Hans、トップページに分区バーがありません）。この設定は海外からログインして中国本土版を見たい人向けで、既定ではオフです。オンにすると中国本土版のページへリダイレクトします。設定画面とツールバーのポップアップのどちらでも切り替えられます。どちらの場合も、国際版の動画、番組、後で見る、お気に入りは通常どおり高速化されます。
+
 ### 新版本提醒 / Update notices / 更新のお知らせ
 
 扩展不会自动更新，所以每次打开完整设置页时，会检查 GitHub 上有没有新版本，有的话在页面顶部显示下载链接。
@@ -154,6 +178,7 @@ There are no dependencies. `node scripts/build.mjs` produces `dist/biliweaver/` 
 manifest.json        扩展清单 / extension manifest
 background.js        徽标和统计 / badge and stats (service worker)
 shared/settings.js   默认设置、校验、镜像列表 / defaults, validation, mirror list
+shared/site.js       国际版地址换回国内版 / international site addresses to mainland ones
 shared/i18n.js       界面文字（中、英、日） / interface text (zh, en, ja)
 _locales/            扩展名称和简介的翻译 / translated extension name and description
 options/             完整设置页 / full settings page
