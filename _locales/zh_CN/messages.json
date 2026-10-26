@@ -1,8 +1,0 @@
-{
-  "extName": {
-    "message": "Biliweaver"
-  },
-  "extDescription": {
-    "message": "把 B 站视频的分段请求拆成多路并发，从多个 CDN 同时下载，让缓冲更快；直播也会优选线路并预取分片。"
-  }
-}

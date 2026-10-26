@@ -1,8 +1,0 @@
-{
-  "extName": {
-    "message": "Biliweaver"
-  },
-  "extDescription": {
-    "message": "Faster bilibili buffering: splits video segment requests into parallel downloads from multiple CDN hosts, and speeds up live rooms too."
-  }
-}
