@@ -94,7 +94,7 @@ The route self test in the player panel.
 
 The route self test on the settings Status page. Hosts and speeds in these screenshots are example data.
 
-## 自动保护、省流量和新版本提醒 / Protection, data saving and update notices / 自動保護・通信量の節約・更新のお知らせ
+## 更多功能 / More features / その他の機能
 
 ### 自动保护 / Automatic protection / 自動保護
 
