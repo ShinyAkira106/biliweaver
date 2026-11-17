@@ -74,7 +74,8 @@
     }
     return Promise.resolve().then(() => handler(request)).catch((error) => {
       if (error?.name === "AbortError") throw error;
-      if (error !== PASS) {
+      if (error?.expired) bw.recordError("expired", util.hostOf(request.url), "address expired; left to bilibili");
+      else if (error !== PASS) {
         stats.counters.fallbacks += 1;
         bw.recordError("fallback", util.hostOf(request.url), error?.message || String(error));
         bw.guard.failure(error?.message || String(error));
@@ -261,7 +262,8 @@
       if (error?.name === "AbortError") return;
       if (readyState === 1) {
         // Nothing reached the page yet: send the request the ordinary way instead.
-        if (error !== PASS) {
+        if (error?.expired) bw.recordError("expired", util.hostOf(request.url), "address expired; left to bilibili");
+        else if (error !== PASS) {
           stats.counters.fallbacks += 1;
           bw.recordError("fallback", util.hostOf(request.url), error?.message || String(error));
           bw.guard.failure(error?.message || String(error));

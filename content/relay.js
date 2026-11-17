@@ -38,8 +38,11 @@
     }
   };
   let leaving = false;
+  let keepMainland = false;
   const applySite = (settings) => {
-    if (leaving || window.top !== window || location.hostname !== "www.bilibili.com") return;
+    if (window.top !== window || location.hostname !== "www.bilibili.com") return;
+    keepMainland = settings.enabled === true && settings.blockIntl === true;
+    if (leaving) return;
     try {
       if (settings.enabled && settings.blockIntl) {
         if (userSite() !== "CN") {
@@ -60,6 +63,35 @@
       }
     } catch (_error) {}
   };
+  // For a signed-in viewer, bilibili's own page code may move a mainland page to the same
+  // page on the international site, going by the account rather than the cookie. While the
+  // setting is on, that one move is cancelled before it happens (Navigation API, Chrome 102
+  // and later). Other navigations, such as a link the viewer clicks, are left alone.
+  const samePage = (a, b) => {
+    try {
+      const x = new URL(a);
+      const y = new URL(b);
+      return x.origin === y.origin && x.pathname.replace(/\/+$/, "") === y.pathname.replace(/\/+$/, "");
+    } catch (_error) {
+      return false;
+    }
+  };
+  let cancelled = 0;
+  try {
+    if (window.top === window && location.hostname === "www.bilibili.com" && typeof globalThis.navigation?.addEventListener === "function") {
+      globalThis.navigation.addEventListener("navigate", (event) => {
+        if (!keepMainland || !event.cancelable || event.navigationType === "traverse" || event.hashChange || event.downloadRequest) return;
+        const destination = event.destination?.url || "";
+        const mainland = globalThis.BiliweaverSite.mainlandUrl(destination);
+        // Only a move from this very page to its international twin.
+        if (!mainland || globalThis.BiliweaverSite.mainlandUrl(location.href) || !samePage(mainland, location.href)) return;
+        event.preventDefault();
+        cancelled += 1;
+        document.documentElement.dataset.biliweaverSiteKept = String(cancelled);
+      });
+    }
+  } catch (_error) {}
+
   // The copy kept in localStorage is read at once, so the redirect happens before the page
   // has loaded; the stored settings confirm it a moment later.
   try {

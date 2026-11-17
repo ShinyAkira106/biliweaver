@@ -333,6 +333,83 @@ test("rate limiting halves the threads", async () => {
   bw.guard.reset();
 });
 
+test("HTTP 412 counts as rate limiting too", async () => {
+  await fresh();
+  bw.guard.reset();
+  resetCdn({ ...healthy(), "upos-sz-mirrorali.bilivideo.com": { status: 412 }, "upos-sz-mirrorhw.bilivideo.com": { status: 412 }, "upos-sz-mirror08c.bilivideo.com": { status: 412 } });
+  setSettings({ prefetch: false, threads: 8 });
+  same(await bytesOf(await pageFetch(mediaUrl, { headers: { Range: "bytes=0-4194303" } })), 0, 4194303);
+  assert.equal(bw.guard.snapshot().threadLimit, 4);
+  assert.ok(bw.recentErrors().some((error) => error.kind === "throttled" && /412/.test(error.message)));
+  bw.guard.reset();
+});
+
+test("an expired address is left to bilibili and is not held against any host", async () => {
+  await fresh();
+  bw.guard.reset();
+  resetCdn(healthy());
+  setSettings({ prefetch: false });
+  const past = Math.floor(Date.now() / 1000) - 60;
+  const soon = Math.floor(Date.now() / 1000) + 3600;
+  assert.equal(bw.util.expired(`https://x.bilivideo.com${PATH}?deadline=${past}`), true);
+  assert.equal(bw.util.expired(`https://x.bilivideo.com${PATH}?deadline=${soon}`), false);
+  assert.equal(bw.util.expired(`https://x.bilivideo.com${PATH}?deadline=1`), false, "test addresses without a real deadline");
+  // The player asks with a stale address: it goes out unchanged, nothing counts as a failure.
+  const stale = `https://upos-sz-mirrorcos.bilivideo.com${PATH}?deadline=${past}&upsig=abc`;
+  const fallbacks = bw.stats.counters.fallbacks;
+  const response = await pageFetch(stale, { headers: { Range: "bytes=0-65535" } });
+  assert.equal(response.headers.get("x-biliweaver"), null);
+  assert.equal(nativeCalls.filter((url) => url === stale).length, 1);
+  assert.equal(bw.stats.counters.fallbacks, fallbacks);
+  // A download whose address runs out while it is under way: every host says 403, which
+  // must not cool hosts or count as rate limiting.
+  resetCdn(Object.fromEntries(Object.keys(healthy()).map((host) => [host, { status: 403 }])));
+  const candidates = Object.keys(healthy()).map((host) => ({ url: `https://${host}${PATH}?deadline=${past}`, host, penalty: 0 }));
+  for (const host of Object.keys(healthy())) bw.hosts.get(host).requests = 3;
+  await assert.rejects(bw.transfer.fetchRange({ key: "expired-test", candidates, start: 0, end: 65535 }), (error) => error.expired === true);
+  assert.equal(requests.length, 1, "no other host is tried for an expired address");
+  assert.ok(Object.keys(healthy()).every((host) => bw.hosts.get(host).cooldownUntil <= Date.now()), "no host cooled down");
+  assert.equal(bw.guard.snapshot().threadLimit, null);
+  assert.equal(bw.guard.snapshot().paused, false);
+  bw.guard.reset();
+});
+
+test("with audio acceleration off, sound streams go the way bilibili sends them", async () => {
+  await fresh();
+  bw.guard.reset();
+  resetCdn(healthy());
+  const audioUrl = `https://upos-sz-mirrorcos.bilivideo.com/upgcxcode/12/34/56789/56789-1-30280.m4s${QUERY}`;
+  setSettings({ prefetch: false, audio: false });
+  const plain = await pageFetch(audioUrl, { headers: { Range: "bytes=0-65535" } });
+  assert.equal(plain.headers.get("x-biliweaver"), null);
+  assert.equal(nativeCalls.filter((url) => url === audioUrl).length, 1);
+  // The picture is still accelerated.
+  assert.equal((await pageFetch(mediaUrl, { headers: { Range: "bytes=0-65535" } })).headers.get("x-biliweaver"), "1");
+  setSettings({ prefetch: false, audio: true });
+  assert.equal((await pageFetch(audioUrl, { headers: { Range: "bytes=0-65535" } })).headers.get("x-biliweaver"), "1");
+  setSettings({});
+});
+
+test("a video another script moved to its own host is still accelerated", async () => {
+  await fresh();
+  bw.guard.reset();
+  resetCdn({ ...healthy(), "video.example.org": { latency: 5 } });
+  setSettings({ prefetch: false });
+  context.__BILIWEAVER_TEST__ = false;
+  try {
+    const moved = `https://video.example.org${PATH}${QUERY}`;
+    assert.equal((await pageFetch(moved, { headers: { Range: "bytes=0-65535" } })).headers.get("x-biliweaver"), "1");
+    // Without the signed bilibili path it is not a bilibili video, and is left alone.
+    const other = "https://video.example.org/clips/intro.mp4";
+    resetCdn({ ...healthy(), "video.example.org": { latency: 5 } });
+    await pageFetch(other).catch(() => null);
+    assert.deepEqual(requests.map((item) => item.host), ["video.example.org"]);
+  } finally {
+    context.__BILIWEAVER_TEST__ = true;
+  }
+  setSettings({});
+});
+
 test("prefetch waits while the video is paused or data saver is on", async () => {
   await fresh();
   bw.guard.reset();

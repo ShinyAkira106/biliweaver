@@ -92,6 +92,17 @@
 
   // Hosts that belong to the peer CDN (home routers and small edge boxes). They are often
   // much slower than the main store and may disappear in the middle of a file.
+  // Signed video addresses carry deadline=<unix seconds>. Past it, every host answers 403,
+  // and only bilibili's player can get a fresh address, so such a request is left to it.
+  util.expired = (url, marginMs = 0) => {
+    try {
+      const deadline = Number(new URL(url).searchParams.get("deadline"));
+      return Number.isFinite(deadline) && deadline > 1e9 && deadline * 1000 <= Date.now() + marginMs;
+    } catch (_error) {
+      return false;
+    }
+  };
+
   util.isPcdn = (url) => {
     try {
       const parsed = new URL(url);

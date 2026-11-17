@@ -162,6 +162,7 @@ window.__NEPTUNE_IS_MY_WAIFU__ = { roomInitRes: { data: { playurl_info: { playur
     const hint = await popup.locator("small[data-i18n=blockIntlHint]").textContent();
     assert.ok(/international site/.test(hint), hint);
     assert.equal(await popup.isChecked("input[data-key=blockIntl]"), false);
+    assert.equal(await popup.isChecked("input[data-key=audio]"), true);
     await popup.click("label:has(input[data-key=blockIntl]) .switch");
     await popup.waitForTimeout(300);
     assert.equal((await worker.evaluate(() => chrome.storage.sync.get("blockIntl"))).blockIntl, true);
@@ -547,11 +548,25 @@ window.__NEPTUNE_IS_MY_WAIFU__ = { roomInitRes: { data: { playurl_info: { playur
     const cookie = (await context.cookies("https://www.bilibili.com")).find((item) => item.name === "user_site");
     assert.equal(cookie?.value, "CN");
     assert.equal(cookie?.domain, ".bilibili.com");
-    // A tab bilibili keeps sending back is left on the international site after two tries.
+    // bilibili's own code moving this page to its international twin (as it does for some
+    // signed-in accounts) is cancelled.
+    await intl.waitForFunction(() => window.__biliweaver?.isReady === true);
+    await intl.evaluate(() => { location.href = "/zh-Hans/video/BV1test/?p=2"; });
+    await intl.waitForTimeout(800);
+    assert.equal(intl.url(), "https://www.bilibili.com/video/BV1test/?p=2");
+    assert.equal(await intl.evaluate(() => document.documentElement.dataset.biliweaverSiteKept), "1");
+    // A page whose script keeps moving it to the international site stays on the mainland.
     await context.route("https://www.bilibili.com/**/BV1loop*", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>loop</title><script>if (!location.pathname.startsWith('/zh-Hans/')) location.replace('/zh-Hans/video/BV1loop');</script>" }));
     await intl.goto("https://www.bilibili.com/zh-Hans/video/BV1loop");
+    await intl.waitForTimeout(1500);
+    assert.equal(new URL(intl.url()).pathname, "/video/BV1loop");
+    // When the server itself keeps sending the tab back, it is left there after two tries.
+    await context.route("https://www.bilibili.com/video/BV1srv", (route) => route.fulfill({ status: 302, headers: { location: "https://www.bilibili.com/zh-Hans/video/BV1srv" } }));
+    await context.route("https://www.bilibili.com/zh-Hans/video/BV1srv", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>srv</title>" }));
+    await intl.waitForTimeout(16000);
+    await intl.goto("https://www.bilibili.com/zh-Hans/video/BV1srv");
     await intl.waitForTimeout(2500);
-    assert.equal(new URL(intl.url()).pathname, "/zh-Hans/video/BV1loop");
+    assert.equal(new URL(intl.url()).pathname, "/zh-Hans/video/BV1srv");
     await worker.evaluate(() => chrome.storage.sync.set({ blockIntl: false }));
     await intl.goto("https://www.bilibili.com/video/BV1test/");
     await intl.waitForFunction(() => window.__biliweaver?.isReady === true);

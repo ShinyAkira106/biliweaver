@@ -96,6 +96,34 @@
     if (open) renderStats();
   });
 
+  // The last minute of speed, one sample a second, for the chart in the panel. The page
+  // sends stats only when they change, so the latest figure stands for the quiet seconds.
+  const HISTORY = 60;
+  const speeds = [];
+  setInterval(() => {
+    if (!stats) return;
+    speeds.push(Math.max(0, Number(stats.speedBps) || 0));
+    if (speeds.length > HISTORY) speeds.shift();
+    if (open) renderChart();
+  }, 1000);
+
+  function renderChart() {
+    const box = panelRoot?.querySelector(".chart");
+    if (!box) return;
+    const peak = Math.max(0, ...speeds);
+    box.hidden = peak <= 0;
+    if (peak <= 0) return;
+    const width = 240;
+    const height = 34;
+    const step = width / (HISTORY - 1);
+    const offset = HISTORY - speeds.length;
+    const points = speeds.map((value, index) => [(offset + index) * step, height - 2 - (value / peak) * (height - 6)]);
+    const line = points.map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+    box.querySelector(".chart-line").setAttribute("d", line);
+    box.querySelector(".chart-area").setAttribute("d", `${line} L${points[points.length - 1][0].toFixed(1)} ${height} L${points[0][0].toFixed(1)} ${height} Z`);
+    box.querySelector(".chart-caption").textContent = t("chartCaption").replace("{peak}", `${formatBytes(peak)}/s`);
+  }
+
   // ---------------------------------------------------------------------------------
   // The button.
   // ---------------------------------------------------------------------------------
@@ -347,6 +375,10 @@
         <div><b data-stat="threads">0</b><span data-i18n="threadsNow"></span></div>
         <div><b data-stat="bytes">0 B</b><span data-i18n="accelerated"></span></div>
       </div>
+      <div class="chart" hidden>
+        <svg viewBox="0 0 240 34" preserveAspectRatio="none" aria-hidden="true"><path class="chart-area"/><path class="chart-line"/></svg>
+        <div class="chart-caption"></div>
+      </div>
       <div class="notices" data-stat="notices"></div>
       <div class="group">
         <div class="label" data-i18n="threads"></div>
@@ -411,6 +443,11 @@
     .stats div{display:flex;flex-direction:column;align-items:center}
     .stats b{font-size:13px;font-weight:600;color:#00aeec;font-variant-numeric:tabular-nums;white-space:nowrap}
     .stats span{font-size:11px;color:hsla(0,0%,100%,.55)}
+    .chart{margin:-2px 0 8px}
+    .chart svg{display:block;width:100%;height:34px}
+    .chart-area{fill:rgba(0,174,236,.18)}
+    .chart-line{fill:none;stroke:#00aeec;stroke-width:1.5;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+    .chart-caption{font-size:11px;color:hsla(0,0%,100%,.45);text-align:right;margin-top:2px;font-variant-numeric:tabular-nums}
     .group{margin:8px 0}
     .label{font-size:12px;color:hsla(0,0%,100%,.6);margin-bottom:5px}
     .segments{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
@@ -668,6 +705,7 @@
     renderNotices();
     const set = (name, text) => { const element = panelRoot.querySelector(`[data-stat=${name}]`); if (element) element.textContent = text; };
     set("speed", `${formatBytes(stats?.speedBps)}/s`);
+    renderChart();
     set("threads", String(stats?.activeThreads || 0));
     set("bytes", formatBytes(stats?.acceleratedBytes));
     // With the second buffer on: seconds loaded past the playback position, and the memory

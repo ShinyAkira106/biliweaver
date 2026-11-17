@@ -23,6 +23,7 @@ const SECTIONS = [
     { key: "threads", type: "select", number: true, title: "threads", desc: "threadsDesc", options: () => Settings.THREAD_CHOICES.map((value) => [value, String(value)]) },
     { key: "chunkKB", type: "select", number: true, title: "chunk", desc: "chunkDesc", options: () => Settings.CHUNK_CHOICES_KB.map((value) => [value, value >= 1024 ? `${value / 1024} MB` : `${value} KB`]) },
     { key: "prefetch", type: "switch", title: "prefetch", desc: "prefetchDesc" },
+    { key: "audio", type: "switch", title: "audio", desc: "audioDesc" },
     { key: "bufferSeconds", type: "select", number: true, title: "bufferSeconds", desc: "bufferSecondsDesc", options: () => Settings.BUFFER_CHOICES_S.map((value) => [value, I18n.t(lang, "secondsOption").replace("{n}", String(value))]) },
     { key: "secondaryBuffer", type: "switch", title: "secondaryBuffer", desc: "secondaryBufferDesc" },
     { key: "avoidPcdn", type: "switch", title: "avoidPcdnLong", desc: "avoidPcdnDesc" }

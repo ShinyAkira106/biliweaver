@@ -27,11 +27,12 @@
   const MIN_SPEED_FOR_TIMEOUT = 24 * 1024; // bytes per second before a piece counts as stalled
 
   class TransferError extends Error {
-    constructor(message, { hard = false, status = 0 } = {}) {
+    constructor(message, { hard = false, status = 0, expired = false } = {}) {
       super(message);
       this.name = "TransferError";
       this.hard = hard;
       this.status = status;
+      this.expired = expired;
     }
   }
 
@@ -108,10 +109,15 @@
       clearTimeout(headerTimer);
       headerTimer = null;
       if (response.status === 416) throw new TransferError("range not satisfiable", { status: 416 });
-      // 429 is always rate limiting. A 403 from a host that has already served this page
-      // well is too; a 403 from a host never used is just a host that cannot serve the file.
-      if (response.status === 429 || (response.status === 403 && entry.requests > 0)) bw.guard.rateLimited(host, response.status);
-      if (response.status === 429) throw new TransferError("HTTP 429", { status: 429 });
+      // A 403 for an address past its deadline says nothing about the host: the address is
+      // stale, and bilibili's player will fetch a new one.
+      if (response.status === 403 && util.expired(candidate.url)) throw new TransferError("address expired", { status: 403, expired: true });
+      // 429 and 412 (bilibili's own "too many requests") are always rate limiting. A 403 from
+      // a host that has already served this page well is too; a 403 from a host never used
+      // is just a host that cannot serve the file.
+      const limited = response.status === 429 || response.status === 412;
+      if (limited || (response.status === 403 && entry.requests > 0)) bw.guard.rateLimited(host, response.status);
+      if (limited) throw new TransferError(`HTTP ${response.status}`, { status: response.status });
       if (response.status === 403 || response.status === 404) throw new TransferError(`HTTP ${response.status}`, { hard: true, status: response.status });
       if (response.status !== 206) {
         // A server that ignores Range would send the whole file; that host is useless here.
@@ -147,7 +153,7 @@
     } catch (error) {
       if (outerSignal?.aborted) throw util.abortError();
       const transfer = error instanceof TransferError ? error : new TransferError(controller.signal.aborted ? "timed out" : String(error?.message || error));
-      if (transfer.status !== 416) hosts.failure(host, transfer.message, { hard: transfer.hard });
+      if (transfer.status !== 416 && !transfer.expired) hosts.failure(host, transfer.message, { hard: transfer.hard });
       throw transfer;
     } finally {
       if (headerTimer) clearTimeout(headerTimer);
@@ -174,7 +180,7 @@
         return await hedged(file, candidates, candidate, start, end, signal, tried);
       } catch (error) {
         if (signal?.aborted || error?.name === "AbortError") throw util.abortError();
-        if (error?.status === 416) throw error;
+        if (error?.status === 416 || error?.expired) throw error;
         lastError = error;
       } finally {
         release();

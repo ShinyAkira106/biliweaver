@@ -50,6 +50,9 @@
       remember(urls);
       // The stream's bit rate turns the buffer length setting into bytes.
       if (Number(value.bandwidth) > 0) for (const url of urls) bw.media.setBitrate(util.fileKey(util.absoluteUrl(url)), value.bandwidth);
+      // The play info says which streams are sound; "Accelerate audio" can leave those alone.
+      const mime = String(value.mimeType || value.mime_type || "");
+      if (/^audio\//i.test(mime) || AUDIO_IDS.has(Number(value.id))) for (const url of urls) audioKeys.add(util.fileKey(util.absoluteUrl(url)));
     }
     for (const key of Object.keys(value)) {
       const child = value[key];
@@ -70,12 +73,25 @@
     try { scan(JSON.parse(text)); } catch (_error) {}
   });
 
+  // bilibili numbers its sound streams 30216, 30232 and 30280 (AAC), 30250 (Dolby) and
+  // 30251 (Hi-Res); the number ends the file name, as in …-1-30280.m4s.
+  const AUDIO_IDS = new Set([30216, 30232, 30280, 30250, 30251]);
+  const audioKeys = new Set();
+  function isAudio(url) {
+    if (audioKeys.has(util.fileKey(url))) return true;
+    const id = /-(\d{5})\.m4s(?:\?|$)/i.exec(url);
+    return Boolean(id && AUDIO_IDS.has(Number(id[1])));
+  }
+
   function isMedia(url) {
     try {
       const parsed = new URL(url);
       if (!/\/upgcxcode\//.test(parsed.pathname)) return false;
       if (!/\.(?:m4s|mp4|flv)$/i.test(parsed.pathname)) return false;
-      return /(?:^|\.)(?:bilivideo\.(?:com|cn)|akamaized\.net|szbdyd\.com|hdslb\.com)$/i.test(parsed.hostname) || util.isPcdn(url) || root.__BILIWEAVER_TEST__ === true;
+      if (/(?:^|\.)(?:bilivideo\.(?:com|cn)|akamaized\.net|szbdyd\.com|hdslb\.com)$/i.test(parsed.hostname) || util.isPcdn(url) || root.__BILIWEAVER_TEST__ === true) return true;
+      // Another script or extension may have moved the video to a host of its own. The
+      // signed bilibili path (with its upsig signature) still says what it is.
+      return parsed.searchParams.has("upsig") || bw.settings.customHosts.some((host) => host === parsed.hostname);
     } catch (_error) {
       return false;
     }
@@ -125,6 +141,11 @@
     if (request.method !== "GET" || !isMedia(request.url)) return null;
     if (bw.isReady && !bw.settings.enabled) return null;
     if (bw.guard.paused()) return null;
+    // Past its deadline the address only gets 403s; bilibili's player sees that and asks for
+    // a new one, which is accelerated again.
+    if (util.expired(request.url, 5000)) return null;
+    // "Accelerate audio" off: the sound goes the way bilibili sends it.
+    if (!bw.settings.audio && isAudio(request.url)) return null;
     const rangeHeader = request.headers.get("range");
     if (rangeHeader && !util.parseRangeHeader(rangeHeader)) return null;
     return async () => {

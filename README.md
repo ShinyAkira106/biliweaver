@@ -28,6 +28,11 @@ The Biliweaver panel in the player's control bar.
 
 Download `biliweaver-v<version>.zip` from [Releases](https://github.com/ShinyAkira106/biliweaver/releases) and unzip it into a folder you will keep. Open `chrome://extensions` (or `edge://extensions`), switch on Developer mode, choose "Load unpacked", and pick the unzipped folder that contains `manifest.json`. Chrome 116 or newer is required.
 
+> [!WARNING]
+> 请不要和其他 B 站加速脚本或扩展同时使用，比如 Bilibili-thread-ripper（BTR）。它们和 Biliweaver 一样会接管页面里的视频请求，同时开启会互相干扰，可能导致卡顿、重复下载或者播放失败。安装 Biliweaver 之前，先在扩展管理页或脚本管理器里把它们关掉。只替换 CDN 的油猴脚本可以一起用：被它换到别的主机的视频照样会加速，但用哪些线路由 Biliweaver 的“CDN 线路”决定。
+>
+> Please don't run Biliweaver alongside other bilibili acceleration scripts or extensions, such as Bilibili-thread-ripper (BTR). Like Biliweaver, they take over the page's video requests, and running both at once makes them interfere with each other, which can cause stalls, duplicate downloads or failed playback. Switch them off in your extensions page or script manager before installing Biliweaver. Userscripts that only swap the CDN can stay on: a video they move to another host is still accelerated, though Biliweaver's "CDN route" setting decides which hosts are used.
+
 播放器右下角的控制栏里，设置按钮旁边会多一个 Biliweaver 按钮。点开是一个和播放器风格一致的小面板：总开关、实时速度、并发线程、CDN 线路、提前下载、避开 PCDN，以及正在使用的线路和速度。全屏时也能打开。点“全部设置”或工具栏上的 Biliweaver 图标，可以看到完整的设置。图标上的数字是当前标签页正在运行的下载线程数。不想要播放器里的按钮，可以在完整设置里关掉。按钮会自动对齐旁边原生按钮的尺寸、间距和颜色。
 
 完整设置页左边是分组导航（基本设置、视频加速、CDN 线路、直播、运行状态、导入/导出、关于），右边每一项都有标题和一句说明。界面支持简体中文、English 和日本語，默认跟随浏览器，也可以在“基本设置”里切换。
@@ -136,6 +141,28 @@ bilibili may show viewers abroad its international site, with a language in fron
 
 bilibili は海外の利用者に国際版のページを表示することがあります（アドレスの前に言語が付き、例：bilibili.com/zh-Hans、トップページに分区バーがありません）。この設定は海外からログインして中国本土版を見たい人向けで、既定ではオフです。オンにすると中国本土版のページへリダイレクトします。設定画面とツールバーのポップアップのどちらでも切り替えられます。どちらの場合も、国際版の動画、番組、後で見る、お気に入りは通常どおり高速化されます。
 
+登录后，有些账号会被 B 站的网页代码按账号设置送回国际版，光靠 cookie 拦不住。打开这个设置时，Biliweaver 会取消这一次“从当前页面跳到它的国际版”的跳转，你自己点开的其他链接不受影响。
+
+Once signed in, some accounts are sent back to the international site by bilibili's page code, which goes by the account rather than the cookie. With this setting on, Biliweaver cancels that one move from the current page to its international twin; other links you open yourself are not affected.
+
+ログイン後、一部のアカウントは bilibili のページのコードによってアカウント設定に従い国際版へ戻されるため、cookie だけでは止められません。この設定がオンのとき、Biliweaver は「今のページからその国際版への移動」だけを取り消します。自分で開いた他のリンクには影響しません。
+
+### 音频加速 / Accelerate audio / 音声も高速化
+
+默认打开，音轨也用多线程下载。关掉后只加速画面，声音按 B 站原来的方式下载。声音偶尔卡顿或者和画面不同步时，可以试试关掉。
+
+On by default, so the sound is downloaded with several connections too. Off, only the picture is sped up and the sound comes the way bilibili sends it. Worth trying if the sound ever stutters or drifts from the picture.
+
+既定ではオンで、音声も複数の接続でダウンロードします。オフにすると映像だけを高速化し、音声は bilibili 本来の方法で取得します。音が途切れたり映像とずれたりする場合に試してください。
+
+### 速度曲线 / Speed chart / 速度グラフ
+
+播放器面板里的数字下面有一条最近 1 分钟的下载速度曲线，还标出这段时间的峰值，能直观看出速度稳不稳。
+
+Under the figures in the player panel, a chart shows the download speed over the last minute with its peak, so you can see at a glance how steady it is.
+
+プレーヤーパネルの数字の下に、直近 1 分間のダウンロード速度のグラフと最大値を表示します。速度が安定しているかがひと目でわかります。
+
 ### 新版本提醒 / Update notices / 更新のお知らせ
 
 扩展不会自动更新，所以每次打开完整设置页时，会检查 GitHub 上有没有新版本，有的话在页面顶部显示下载链接。
@@ -160,9 +187,9 @@ Live: a live stream cannot be split by byte range like a stored video. Biliweave
 
 ## 设置 / Settings
 
-“并发线程”是整个标签页同时进行的分片下载数量，默认 8。“最小分片”决定一段请求最多被切成几份。“CDN 线路”可以选择自动（B 站给的线路加大陆镜像）、只用大陆镜像、海外镜像、只用 B 站给的线路，或者自定义主机列表。“避开 PCDN 节点”会尽量不用家用路由器一类的边缘节点，它们常常很慢，还会在下载中途消失。直播部分可以单独关闭。
+“并发线程”是整个标签页同时进行的分片下载数量，默认 8。“最小分片”决定一段请求最多被切成几份。“CDN 线路”可以选择自动（B 站给的线路加大陆镜像）、只用大陆镜像、海外镜像、只用 B 站给的线路，或者自定义主机列表。“避开 PCDN 节点”会尽量不用家用路由器一类的边缘节点，它们常常很慢，还会在下载中途消失。“音频加速”关掉后只加速画面。直播部分可以单独关闭。
 
-"Threads" is the number of piece downloads a tab runs at once, 8 by default. "Minimum piece size" decides how many pieces one request can be split into. "CDN route" can be automatic (bilibili's hosts plus the mainland mirrors), mainland mirrors only, overseas mirrors, bilibili's hosts only, or a custom host list. "Avoid PCDN nodes" keeps away from home router style edge nodes, which are often slow and can disappear mid download. Live acceleration can be switched off on its own.
+"Threads" is the number of piece downloads a tab runs at once, 8 by default. "Minimum piece size" decides how many pieces one request can be split into. "CDN route" can be automatic (bilibili's hosts plus the mainland mirrors), mainland mirrors only, overseas mirrors, bilibili's hosts only, or a custom host list. "Avoid PCDN nodes" keeps away from home router style edge nodes, which are often slow and can disappear mid download. With "Accelerate audio" off, only the picture is sped up. Live acceleration can be switched off on its own.
 
 镜像主机列表在 `shared/settings.js` 里。不响应的主机会被自动暂停，所以列表里有过期的主机，代价也只是一次失败的请求。
 

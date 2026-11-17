@@ -98,14 +98,28 @@ const DEMO_SELF_TEST = { ok: true, tested: 10, working: 8, results: [
   await page.evaluate((demo) => {
     window.__biliweaver.selfTest = () => new Promise((resolve) => setTimeout(() => resolve({ ...demo, at: Date.now() }), 600));
   }, DEMO_SELF_TEST);
-  await page.evaluate((fake) => { window.__fake = setInterval(() => document.dispatchEvent(new CustomEvent("biliweaver:stats", { detail: fake })), 100); }, FAKE_STATS);
+  // Speed rises and settles like a video starting, so the panel's chart has a shape.
+  await page.evaluate((fake) => {
+    const base = JSON.parse(fake);
+    const started = Date.now();
+    // The real engine on this demo page reports zero speed now and then; only the demo
+    // figures should reach the panel.
+    const dispatch = document.dispatchEvent.bind(document);
+    document.dispatchEvent = (event) => (event.type === "biliweaver:stats" && !String(event.detail).includes('"demo":true') ? true : dispatch(event));
+    window.__fake = setInterval(() => {
+      const t = (Date.now() - started) / 1000;
+      const speed = (10.5 + 1.6 * Math.sin(t / 9.1) + 0.7 * Math.sin(t / 7.3 + 1) + (t < 6 ? (t - 6) * 1.2 : 0)) * 1024 * 1024;
+      document.dispatchEvent(new CustomEvent("biliweaver:stats", { detail: JSON.stringify({ ...base, demo: true, speedBps: Math.max(0.4 * 1024 * 1024, speed) }) }));
+    }, 100);
+  }, FAKE_STATS);
+  await page.waitForTimeout(45000);
 
   // Player panel, Chinese.
   await setLanguage("zh-CN");
   await page.waitForTimeout(400);
   await page.click("#right .biliweaver-ctrl");
   await page.waitForTimeout(700);
-  await page.screenshot({ path: path.join(out, "player-panel.png"), clip: { x: 640, y: 120, width: 640, height: 600 } });
+  await page.screenshot({ path: path.join(out, "player-panel.png"), clip: { x: 640, y: 80, width: 640, height: 640 } });
 
   // Self test in the panel, English.
   await setLanguage("en");
